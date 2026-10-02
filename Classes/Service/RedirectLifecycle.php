@@ -163,18 +163,37 @@ final class RedirectLifecycle
         return $this->restart($uid, true);
     }
 
-    /** Null means applied; otherwise returns the untranslated skip reason. */
-    public function renew(int $uid): ?string
+    /** @return array{endtime: int, shortens: bool, state: string} */
+    public function previewRenewal(array $record): array
     {
-        return $this->restart($uid, false);
+        $preview = $this->prepareCreation($record, 1);
+        $expiry = (int)$preview['endtime'];
+        $now = $this->context->getAspect('date')->getDateTime()->getTimestamp();
+        return [
+            'endtime' => $expiry,
+            'shortens' => $expiry > 0 && ((int)$record['endtime'] === 0 || $expiry < (int)$record['endtime']),
+            // Ignore seconds spent reviewing, but bind confirmation to the record and lifetime rules.
+            'state' => hash('sha256', serialize([$record, $expiry > 0 ? $expiry - $now : 0,
+                $preview['tx_redirectlifecycle_delete_after'] - $expiry,
+            ])),
+        ];
     }
 
-    private function restart(int $uid, bool $adopt): ?string
+    /** Null means applied; otherwise returns the untranslated skip reason, including a changed preview. */
+    public function renew(int $uid, ?string $expectedState = null): ?string
     {
-        return $this->write($uid, function (array $record) use ($uid, $adopt): ?string {
+        return $this->restart($uid, false, $expectedState);
+    }
+
+    private function restart(int $uid, bool $adopt, ?string $expectedState = null): ?string
+    {
+        return $this->write($uid, function (array $record) use ($uid, $adopt, $expectedState): ?string {
             $reason = $this->actionReason($record, $adopt);
             if ($reason !== 'eligible') {
                 return $reason;
+            }
+            if ($expectedState !== null && !hash_equals($this->previewRenewal($record)['state'], $expectedState)) {
+                return 'changed';
             }
             if (!$GLOBALS['BE_USER']->isAdmin() && !$GLOBALS['BE_USER']->check('non_exclude_fields', 'sys_redirect:tx_redirectlifecycle_mode')) {
                 throw new \RuntimeException($GLOBALS['LANG']->sL('LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:action.permission'), 1791014404);

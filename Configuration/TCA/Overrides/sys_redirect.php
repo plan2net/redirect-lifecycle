@@ -14,6 +14,9 @@ ExtensionManagementUtility::addTCAcolumns('sys_redirect', [
             'type' => 'select',
             'renderType' => 'selectSingle',
             'default' => 0,
+            'fieldControl' => [
+                'renewLifetime' => ['renderType' => 'redirectLifecycleRenew'],
+            ],
             'items' => [
                 ['label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode.unmanaged', 'value' => 0],
                 ['label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode.managed', 'value' => 1],

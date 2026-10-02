@@ -33,6 +33,8 @@ services:
     public: true
   Plan2net\RedirectLifecycle\Hook\LifecycleDataHandlerHook:
     public: true
+  Plan2net\RedirectLifecycle\Controller\RenewController:
+    public: true
   Plan2net\RedirectLifecycle\EventListener\LifecycleEventListener:
     tags:
       - name: event.listener

@@ -1,0 +1,33 @@
+<html xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers" data-namespace-typo3-fluid="true">
+<f:layout name="Module" />
+<f:section name="Content">
+    <h1><f:translate key="LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:backend.renew" /></h1>
+    <p>{record.source_host}{record.source_path} (UID {record.uid})</p>
+    <f:if condition="{message}">
+        <div class="alert alert-{severity}" role="status">{message}</div>
+    </f:if>
+    <f:if condition="{showConfirmation}">
+        <p><f:translate key="LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:backend.savedRecord" /></p>
+        <dl>
+            <dt><f:translate key="LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:backend.currentExpiry" /></dt>
+            <dd>{currentExpiry}</dd>
+            <dt><f:translate key="LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:backend.newExpiry" /></dt>
+            <dd>{newExpiry}</dd>
+        </dl>
+        <f:if condition="{shortens}">
+            <div class="alert alert-warning" role="alert"><f:translate key="LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:backend.shortens" /></div>
+        </f:if>
+        <form action="{actionUrl}" method="post">
+            <input type="hidden" name="uid" value="{record.uid}" />
+            <input type="hidden" name="formToken" value="{formToken}" />
+            <input type="hidden" name="state" value="{state}" />
+            <input type="hidden" name="returnUrl" value="{returnUrl}" />
+            <button class="btn btn-primary" type="submit"><f:translate key="LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:backend.confirm" /></button>
+            <a class="btn btn-default" href="{backUrl}"><f:translate key="LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:backend.cancel" /></a>
+        </form>
+    </f:if>
+    <f:if condition="!{showConfirmation}">
+        <a class="btn btn-default" href="{backUrl}"><f:translate key="LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:backend.back" /></a>
+    </f:if>
+</f:section>
+</html>

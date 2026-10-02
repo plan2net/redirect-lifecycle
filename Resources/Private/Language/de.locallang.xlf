@@ -2,6 +2,20 @@
 <xliff version="1.2">
     <file source-language="en" target-language="de" datatype="plaintext" original="messages" product-name="redirect_lifecycle">
         <body>
+            <trans-unit id="backend.renew" resname="backend.renew"><source>Reset lifetime</source><target>Laufzeit neu setzen</target></trans-unit>
+            <trans-unit id="backend.confirm" resname="backend.confirm"><source>Confirm lifetime reset</source><target>Laufzeit neu setzen bestätigen</target></trans-unit>
+            <trans-unit id="backend.currentExpiry" resname="backend.currentExpiry"><source>Current expiry</source><target>Bisheriges Ablaufdatum</target></trans-unit>
+            <trans-unit id="backend.newExpiry" resname="backend.newExpiry"><source>New expiry</source><target>Neues Ablaufdatum</target></trans-unit>
+            <trans-unit id="backend.unlimited" resname="backend.unlimited"><source>Unlimited</source><target>Unbegrenzt</target></trans-unit>
+            <trans-unit id="backend.shortens" resname="backend.shortens"><source>This action shortens the remaining lifetime.</source><target>Diese Aktion verkürzt die verbleibende Laufzeit.</target></trans-unit>
+            <trans-unit id="backend.savedRecord" resname="backend.savedRecord"><source>This action uses the saved redirect. Save any changes in the edit form first.</source><target>Diese Aktion verwendet die gespeicherte Weiterleitung. Speichere Änderungen im Bearbeitungsformular vorher.</target></trans-unit>
+            <trans-unit id="backend.applied" resname="backend.applied"><source>The lifetime was reset.</source><target>Die Laufzeit wurde neu gesetzt.</target></trans-unit>
+            <trans-unit id="backend.cancel" resname="backend.cancel"><source>Cancel</source><target>Abbrechen</target></trans-unit>
+            <trans-unit id="backend.back" resname="backend.back"><source>Back to redirect</source><target>Zurück zur Weiterleitung</target></trans-unit>
+            <trans-unit id="backend.denied" resname="backend.denied"><source>You do not have permission to reset this lifetime.</source><target>Du hast keine Berechtigung, diese Laufzeit neu zu setzen.</target></trans-unit>
+            <trans-unit id="backend.ineligible" resname="backend.ineligible"><source>This redirect is no longer eligible for a lifetime reset.</source><target>Die Laufzeit dieser Weiterleitung kann nicht mehr neu gesetzt werden.</target></trans-unit>
+            <trans-unit id="backend.invalidToken" resname="backend.invalidToken"><source>The confirmation is invalid. Open the lifetime preview again.</source><target>Die Bestätigung ist ungültig. Öffne die Laufzeitvorschau erneut.</target></trans-unit>
+            <trans-unit id="backend.changed" resname="backend.changed"><source>The redirect or lifetime settings changed. Review the updated preview and confirm again.</source><target>Die Weiterleitung oder die Laufzeiteinstellungen wurden geändert. Prüfe die aktualisierte Vorschau und bestätige erneut.</target></trans-unit>
             <trans-unit id="cache.committedFailure" resname="cache.committedFailure"><source>Redirect UID %d was saved, but cache rebuilding failed. The database change was not rolled back.</source><target>Weiterleitung mit UID %d wurde gespeichert, aber der Cache konnte nicht neu aufgebaut werden. Die Datenbankänderung wurde nicht zurückgenommen.</target></trans-unit>
             <trans-unit id="action.adoptDescription" resname="action.adoptDescription"><source>Preview or explicitly adopt eligible existing redirects.</source><target>Geeignete bestehende Weiterleitungen prüfen oder ausdrücklich übernehmen.</target></trans-unit>
             <trans-unit id="action.renewDescription" resname="action.renewDescription"><source>Preview or explicitly restart selected managed lifetimes.</source><target>Laufzeiten ausgewählter verwalteter Weiterleitungen prüfen oder ausdrücklich neu starten.</target></trans-unit>

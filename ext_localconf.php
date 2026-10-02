@@ -5,12 +5,17 @@ declare(strict_types=1);
 use Plan2net\RedirectLifecycle\Hook\LifecycleDataHandlerHook;
 use Plan2net\RedirectLifecycle\Form\FormDataProvider\LifecycleFormData;
 use Plan2net\RedirectLifecycle\Form\FormDataProvider\LifecycleFormDefaults;
+use Plan2net\RedirectLifecycle\Form\FieldControl\RenewLifetime;
 use TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRowInitializeNew;
 use TYPO3\CMS\Backend\Form\FormDataProvider\InitializeProcessedTca;
 use TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsOverrides;
 use TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessCommon;
 
 defined('TYPO3') or die();
+
+$GLOBALS['TYPO3_CONF_VARS']['SYS']['formEngine']['nodeRegistry']['redirect_lifecycle_renew'] = [
+    'nodeName' => 'redirectLifecycleRenew', 'priority' => 40, 'class' => RenewLifetime::class,
+];
 
 $GLOBALS['TYPO3_CONF_VARS']['SC_OPTIONS']['t3lib/class.t3lib_tcemain.php']['processDatamapClass']['redirect_lifecycle'] = LifecycleDataHandlerHook::class;
 $GLOBALS['TYPO3_CONF_VARS']['SC_OPTIONS']['t3lib/class.t3lib_tcemain.php']['processCmdmapClass']['redirect_lifecycle'] = LifecycleDataHandlerHook::class;

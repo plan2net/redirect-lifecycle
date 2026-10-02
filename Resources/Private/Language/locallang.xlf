@@ -2,6 +2,20 @@
 <xliff version="1.2">
     <file source-language="en" datatype="plaintext" original="messages" product-name="redirect_lifecycle">
         <body>
+            <trans-unit id="backend.renew" resname="backend.renew"><source>Reset lifetime</source></trans-unit>
+            <trans-unit id="backend.confirm" resname="backend.confirm"><source>Confirm lifetime reset</source></trans-unit>
+            <trans-unit id="backend.currentExpiry" resname="backend.currentExpiry"><source>Current expiry</source></trans-unit>
+            <trans-unit id="backend.newExpiry" resname="backend.newExpiry"><source>New expiry</source></trans-unit>
+            <trans-unit id="backend.unlimited" resname="backend.unlimited"><source>Unlimited</source></trans-unit>
+            <trans-unit id="backend.shortens" resname="backend.shortens"><source>This action shortens the remaining lifetime.</source></trans-unit>
+            <trans-unit id="backend.savedRecord" resname="backend.savedRecord"><source>This action uses the saved redirect. Save any changes in the edit form first.</source></trans-unit>
+            <trans-unit id="backend.applied" resname="backend.applied"><source>The lifetime was reset.</source></trans-unit>
+            <trans-unit id="backend.cancel" resname="backend.cancel"><source>Cancel</source></trans-unit>
+            <trans-unit id="backend.back" resname="backend.back"><source>Back to redirect</source></trans-unit>
+            <trans-unit id="backend.denied" resname="backend.denied"><source>You do not have permission to reset this lifetime.</source></trans-unit>
+            <trans-unit id="backend.ineligible" resname="backend.ineligible"><source>This redirect is no longer eligible for a lifetime reset.</source></trans-unit>
+            <trans-unit id="backend.invalidToken" resname="backend.invalidToken"><source>The confirmation is invalid. Open the lifetime preview again.</source></trans-unit>
+            <trans-unit id="backend.changed" resname="backend.changed"><source>The redirect or lifetime settings changed. Review the updated preview and confirm again.</source></trans-unit>
             <trans-unit id="cache.committedFailure" resname="cache.committedFailure"><source>Redirect UID %d was saved, but cache rebuilding failed. The database change was not rolled back.</source></trans-unit>
             <trans-unit id="action.adoptDescription" resname="action.adoptDescription"><source>Preview or explicitly adopt eligible existing redirects.</source></trans-unit>
             <trans-unit id="action.renewDescription" resname="action.renewDescription"><source>Preview or explicitly restart selected managed lifetimes.</source></trans-unit>
