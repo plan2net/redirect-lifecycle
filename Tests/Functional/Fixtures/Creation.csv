@@ -1,0 +1,16 @@
+"be_users"
+,"uid","pid","username","admin","usergroup","db_mountpoints"
+,1,0,"docker",1,"",""
+,2,0,"editor",0,"1","1"
+"be_groups"
+,"uid","pid","title","tables_select","tables_modify"
+,1,0,"Editors","sys_redirect,pages","sys_redirect,pages"
+"pages"
+,"uid","pid","title","slug","is_siteroot","doktype","perms_userid","perms_user"
+,1,0,"Main","/",1,1,2,31
+,2,1,"Old","/old",0,1,2,31
+,3,0,"Other","/",1,1,2,31
+,4,1,"Redirect storage","/storage",0,254,2,31
+"sys_redirect"
+,"uid","pid","source_host","source_path","target"
+,100,0,"*","/legacy","https://target.test/legacy"

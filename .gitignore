@@ -1,0 +1,8 @@
+/vendor/
+/composer.lock
+/dev/typo3-v*/vendor/
+/dev/typo3-v*/public/
+/dev/typo3-v*/var/
+/dev/typo3-v*/config/system/
+/dev/typo3-v*/.env
+/dev/typo3-v*/.credentials

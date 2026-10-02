@@ -1,0 +1,39 @@
+{
+    "name": "plan2net/redirect-lifecycle",
+    "description": "Automatic lifetime management for TYPO3 redirects",
+    "type": "typo3-cms-extension",
+    "license": "GPL-2.0-only",
+    "require": {
+        "php": "^8.1",
+        "typo3/cms-core": "^12.4 || ^13.4 || ^14.0",
+        "typo3/cms-redirects": "^12.4 || ^13.4 || ^14.0",
+        "typo3/cms-scheduler": "^12.4 || ^13.4 || ^14.0"
+    },
+    "suggest": {
+        "wazum/sluggi": "URL slug management and automatic redirects; compatible integration tested with Sluggi 14.x"
+    },
+    "autoload": {
+        "psr-4": {
+            "Plan2net\\RedirectLifecycle\\": "Classes/"
+        }
+    },
+    "extra": {
+        "typo3/cms": {
+            "extension-key": "redirect_lifecycle",
+            "version": "0.1.0",
+            "Package": {
+                "providesPackages": []
+            }
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5 || ^11.5",
+        "typo3/testing-framework": "^8.3 || ^9.7",
+        "wazum/sluggi": "^14.15"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Plan2net\\RedirectLifecycle\\Tests\\": "Tests/"
+        }
+    }
+}

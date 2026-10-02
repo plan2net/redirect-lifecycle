@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!-- Only known Sluggi 14.15.2 deprecations emitted by TYPO3 14.3.7. Keep unrelated issues out. -->
+<files version="1">
+ <file path="vendor/typo3/cms-core/Classes/Package/PackageManager.php">
+  <line number="948" hash="8f3e2257409cdb8fabb85e9a19591d1b4ac5ec6b">
+   <issue><![CDATA[Extension "sluggi" is having an ext_emconf.php file, which is deprecated. Additionally the composer.json is missing "version" and "providesPackages" declaration. See https://docs.typo3.org/permalink/changelog:deprecation-108345-1774126701@14.3 for details.]]></issue>
+  </line>
+ </file>
+ <file path="vendor/typo3/cms-core/Classes/Configuration/Extension/ExtTablesFactory.php">
+  <line number="110" hash="5bc2576628448f71ab18587ec50b9d089d04c7f5">
+   <issue><![CDATA[Loading ext_tables.php of extension "sluggi" has been deprecated in TYPO3 v14.3 and will be removed in TYPO3 v15.0. Register backend modules, routes and other TCA-unrelated configurations in Configuration/Services.yaml or appropriate Configuration/ files instead.]]></issue>
+  </line>
+  <line number="73" hash="5bc2576628448f71ab18587ec50b9d089d04c7f5">
+   <issue><![CDATA[Loading ext_tables.php of extension "sluggi" has been deprecated in TYPO3 v14.3 and will be removed in TYPO3 v15.0. Register backend modules, routes and other TCA-unrelated configurations in Configuration/Services.yaml or appropriate Configuration/ files instead.]]></issue>
+  </line>
+ </file>
+</files>

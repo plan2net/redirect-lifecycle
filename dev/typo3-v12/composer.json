@@ -1,0 +1,111 @@
+{
+    "name": "plan2net/redirect-lifecycle-dev-12",
+    "description": "TYPO3 12 development instance for redirect_lifecycle",
+    "type": "project",
+    "license": "GPL-2.0-only",
+    "repositories": [
+        {
+            "type": "path",
+            "url": "/opt/redirect-lifecycle",
+            "options": {
+                "symlink": true,
+                "versions": {
+                    "plan2net/redirect-lifecycle": "dev-main"
+                }
+            }
+        }
+    ],
+    "require": {
+        "plan2net/redirect-lifecycle": "dev-main",
+        "typo3/cms-core": "12.4.45",
+        "typo3/cms-install": "^12.4",
+        "typo3/minimal": "^12.4",
+        "wazum/sluggi": "^14.15"
+    },
+    "config": {
+        "allow-plugins": {
+            "typo3/class-alias-loader": true,
+            "typo3/cms-composer-installers": true
+        },
+        "sort-packages": true,
+        "policy": {
+            "advisories": {
+                "ignore-id": {
+                    "PKSA-2yr3-by9d-r1gh": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-32mm-z25f-2ysj": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-4mhm-w6hx-yhcy": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-6jfs-jhtj-72x7": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-745m-816f-bzfy": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-br9n-75sp-8dqy": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-bzt2-2962-49bj": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-ghx2-mc2z-fx6x": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-gj1k-954p-nhmk": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-gksc-phy8-f181": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-gr4f-6g49-cg8v": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-q3vc-jr63-rrrj": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-s3vj-chpj-8wrn": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    },
+                    "PKSA-vbrn-fwpj-xmx5": {
+                        "on-audit": false,
+                        "reason": "User-approved local TYPO3 12.4.45 development only; keep this advisory visible in audit."
+                    }
+                }
+            }
+        }
+    },
+    "extra": {
+        "typo3/cms": {
+            "web-dir": "public"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "typo3/testing-framework": "^8.3"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Plan2net\\RedirectLifecycle\\Tests\\": "/opt/redirect-lifecycle/Tests/"
+        }
+    },
+    "scripts": {
+        "test:functional": "phpunit --bootstrap vendor/typo3/testing-framework/Resources/Core/Build/FunctionalTestsBootstrap.php --configuration /opt/redirect-lifecycle/Tests/Functional.xml"
+    }
+}

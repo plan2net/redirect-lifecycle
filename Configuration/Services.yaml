@@ -1,0 +1,39 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+  Plan2net\RedirectLifecycle\RedirectCacheService:
+    public: true
+  TYPO3\CMS\Redirects\Service\RedirectCacheService:
+    alias: Plan2net\RedirectLifecycle\RedirectCacheService
+    public: true
+  Plan2net\RedirectLifecycle\Command\CleanupCommand:
+    tags:
+      - name: console.command
+        command: redirect-lifecycle:cleanup
+        schedulable: true
+  redirect_lifecycle.adopt:
+    class: Plan2net\RedirectLifecycle\Command\LifecycleActionCommand
+    arguments:
+      $adopt: true
+    tags:
+      - name: console.command
+        command: redirect-lifecycle:adopt
+        schedulable: false
+  redirect_lifecycle.renew:
+    class: Plan2net\RedirectLifecycle\Command\LifecycleActionCommand
+    arguments:
+      $adopt: false
+    tags:
+      - name: console.command
+        command: redirect-lifecycle:renew
+        schedulable: false
+  Plan2net\RedirectLifecycle\RedirectLifecycle:
+    public: true
+    tags:
+      - name: event.listener
+        identifier: redirect-lifecycle-creation
+        method: onAutomaticCreation
+      - name: event.listener
+        identifier: redirect-lifecycle-renewal
+        method: onHit

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2">
+    <file source-language="en" target-language="de" datatype="plaintext" original="messages" product-name="redirect_lifecycle">
+        <body>
+            <trans-unit id="action.adoptDescription" resname="action.adoptDescription"><source>Preview or explicitly adopt eligible existing redirects.</source><target>Geeignete bestehende Weiterleitungen prüfen oder ausdrücklich übernehmen.</target></trans-unit>
+            <trans-unit id="action.renewDescription" resname="action.renewDescription"><source>Preview or explicitly restart selected managed lifetimes.</source><target>Laufzeiten ausgewählter verwalteter Weiterleitungen prüfen oder ausdrücklich neu starten.</target></trans-unit>
+            <trans-unit id="action.uids" resname="action.uids"><source>Redirect UIDs; omission previews the whole stock for adoption.</source><target>Weiterleitungs-UIDs; ohne Angabe wird zur Übernahme der gesamte Bestand geprüft.</target></trans-unit>
+            <trans-unit id="action.execute" resname="action.execute"><source>Apply the action after showing the preview.</source><target>Aktion nach Anzeige der Vorschau ausführen.</target></trans-unit>
+            <trans-unit id="action.invalidUid" resname="action.invalidUid"><source>Redirect UIDs must be positive integers.</source><target>Weiterleitungs-UIDs müssen positive ganze Zahlen sein.</target></trans-unit>
+            <trans-unit id="action.host" resname="action.host"><source>Source host</source><target>Quellhost</target></trans-unit>
+            <trans-unit id="action.path" resname="action.path"><source>Source path</source><target>Quellpfad</target></trans-unit>
+            <trans-unit id="action.status" resname="action.status"><source>Eligibility / skip reason</source><target>Eignung / Grund für das Überspringen</target></trans-unit>
+            <trans-unit id="action.preview" resname="action.preview"><source>Preview only. Use --execute to apply this action.</source><target>Nur Vorschau. Mit --execute wird die Aktion ausgeführt.</target></trans-unit>
+            <trans-unit id="action.eligible" resname="action.eligible"><source>Eligible</source><target>Geeignet</target></trans-unit>
+            <trans-unit id="action.missing" resname="action.missing"><source>Record missing</source><target>Datensatz fehlt</target></trans-unit>
+            <trans-unit id="action.deleted" resname="action.deleted"><source>Deleted</source><target>Gelöscht</target></trans-unit>
+            <trans-unit id="action.excludedType" resname="action.excludedType"><source>Excluded redirect type</source><target>Ausgeschlossener Weiterleitungstyp</target></trans-unit>
+            <trans-unit id="action.alreadyManaged" resname="action.alreadyManaged"><source>Already managed</source><target>Bereits verwaltet</target></trans-unit>
+            <trans-unit id="action.fixed" resname="action.fixed"><source>Fixed expiry</source><target>Festes Ablaufdatum</target></trans-unit>
+            <trans-unit id="action.protected" resname="action.protected"><source>Protected</source><target>Geschützt</target></trans-unit>
+            <trans-unit id="action.disabled" resname="action.disabled"><source>Manually disabled</source><target>Manuell deaktiviert</target></trans-unit>
+            <trans-unit id="action.notStarted" resname="action.notStarted"><source>Not yet active</source><target>Noch nicht aktiv</target></trans-unit>
+            <trans-unit id="action.unmanaged" resname="action.unmanaged"><source>Unmanaged</source><target>Nicht verwaltet</target></trans-unit>
+            <trans-unit id="action.applied" resname="action.applied"><source>%d redirects updated.</source><target>%d Weiterleitungen aktualisiert.</target></trans-unit>
+            <trans-unit id="action.skipped" resname="action.skipped"><source>Skipped UID %d: %s</source><target>UID %d übersprungen: %s</target></trans-unit>
+            <trans-unit id="action.permission" resname="action.permission"><source>Lifetime field permission is required.</source><target>Die Feldberechtigung für die Laufzeitverwaltung ist erforderlich.</target></trans-unit>
+            <trans-unit id="cleanup.deleted" resname="cleanup.deleted"><source>%d redirects soft-deleted.</source><target>%d Weiterleitungen in den Papierkorb verschoben.</target></trans-unit>
+            <trans-unit id="cleanup.description" resname="cleanup.description"><source>Soft-delete due managed redirects using their stored deletion times.</source><target>Fällige verwaltete Weiterleitungen anhand ihrer gespeicherten Löschzeitpunkte in den Papierkorb verschieben.</target></trans-unit>
+            <trans-unit id="cleanup.dryRun" resname="cleanup.dryRun"><source>Show deletion candidates without changing records.</source><target>Löschkandidaten anzeigen, ohne Datensätze zu ändern.</target></trans-unit>
+            <trans-unit id="cleanup.host" resname="cleanup.host"><source>Source host</source><target>Quellhost</target></trans-unit>
+            <trans-unit id="cleanup.path" resname="cleanup.path"><source>Source path</source><target>Quellpfad</target></trans-unit>
+            <trans-unit id="cleanup.expiry" resname="cleanup.expiry"><source>Expiry timestamp</source><target>Ablaufzeitpunkt</target></trans-unit>
+            <trans-unit id="cleanup.deletion" resname="cleanup.deletion"><source>Deletion timestamp</source><target>Löschzeitpunkt</target></trans-unit>
+            <trans-unit id="cleanup.candidates" resname="cleanup.candidates"><source>%d deletion candidates.</source><target>%d Löschkandidaten.</target></trans-unit>
+            <trans-unit id="settings.minimumRemainingLifetime" resname="settings.minimumRemainingLifetime"><source>Minimum remaining lifetime in days: A valid hit extends managed expiry to at least this many fixed days. Must be greater than zero.</source><target>Verbleibende Mindestlaufzeit in Tagen: Ein gültiger Aufruf verlängert ein verwaltetes Ablaufdatum auf mindestens diese Anzahl fester Tage. Muss größer als null sein.</target></trans-unit>
+            <trans-unit id="mode" resname="mode"><source>Lifetime management</source><target>Laufzeitverwaltung</target></trans-unit>
+            <trans-unit id="mode.description" resname="mode.description"><source>Switching to automatic management starts a full lifetime. Fixed expiry allows editing the end date. Ending management clears managed dates; fixed dates remain until explicitly removed.</source><target>Beim Wechsel zur automatischen Verwaltung beginnt eine volle Laufzeit. Ein festes Ablaufdatum lässt sich bearbeiten. Das Beenden der Verwaltung entfernt verwaltete Daten; feste Daten bleiben bis zur ausdrücklichen Entfernung erhalten.</target></trans-unit>
+            <trans-unit id="mode.unmanaged" resname="mode.unmanaged"><source>No automatic management</source><target>Keine automatische Verwaltung</target></trans-unit>
+            <trans-unit id="mode.managed" resname="mode.managed"><source>Automatic management</source><target>Automatische Verwaltung</target></trans-unit>
+            <trans-unit id="mode.fixed" resname="mode.fixed"><source>Fixed expiry time</source><target>Festes Ablaufdatum</target></trans-unit>
+            <trans-unit id="deleteAfter" resname="deleteAfter"><source>Earliest automatic deletion</source><target>Frühester Zeitpunkt für automatische Löschung</target></trans-unit>
+            <trans-unit id="settings.redirectTTL" resname="settings.redirectTTL">
+                <source>Global initial lifetime in days: Used only when no unambiguous site is found. Zero means unlimited validity.</source>
+                <target>Globale initiale Laufzeit in Tagen: Wird nur ohne eindeutige Site-Zuordnung verwendet. Null bedeutet unbegrenzte Gültigkeit.</target>
+            </trans-unit>
+            <trans-unit id="settings.cleanupGracePeriod" resname="settings.cleanupGracePeriod">
+                <source>Cleanup grace period in days: Fixed days after expiry before automatic deletion may occur.</source>
+                <target>Wartezeit für die Bereinigung in Tagen: Feste Tage nach Ablauf, bevor eine automatische Löschung erfolgen darf.</target>
+            </trans-unit>
+        </body>
+    </file>
+</xliff>
