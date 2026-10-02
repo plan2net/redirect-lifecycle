@@ -1,0 +1,10 @@
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/AGENTS.md export-ignore
+/GLOSSARY.md export-ignore
+/Tests export-ignore
+/dev export-ignore
+/Documentation/adr export-ignore
+/Documentation/agents export-ignore
+/Documentation/development.md export-ignore
+/Documentation/lifecycle-decisions.md export-ignore

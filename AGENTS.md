@@ -6,12 +6,12 @@ For structural codebase exploration, use the installed `codebase-memory` skill.
 
 ### Issue tracker
 
-Issues and specs live in GitHub Issues. See `docs/agents/issue-tracker.md`.
+Issues and specs live in GitHub Issues. See `Documentation/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Use the five default triage labels. See `docs/agents/triage-labels.md`.
+Use the five default triage labels. See `Documentation/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: root `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: root `GLOSSARY.md` and `Documentation/adr/`. See `Documentation/agents/domain.md`.
