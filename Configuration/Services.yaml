@@ -2,10 +2,11 @@ services:
   _defaults:
     autowire: true
     autoconfigure: true
-  Plan2net\RedirectLifecycle\RedirectCacheService:
+    public: false
+  Plan2net\RedirectLifecycle\Service\RedirectCacheService:
     public: true
   TYPO3\CMS\Redirects\Service\RedirectCacheService:
-    alias: Plan2net\RedirectLifecycle\RedirectCacheService
+    alias: Plan2net\RedirectLifecycle\Service\RedirectCacheService
     public: true
   Plan2net\RedirectLifecycle\Command\CleanupCommand:
     tags:
@@ -28,8 +29,11 @@ services:
       - name: console.command
         command: redirect-lifecycle:renew
         schedulable: false
-  Plan2net\RedirectLifecycle\RedirectLifecycle:
+  Plan2net\RedirectLifecycle\Service\RedirectLifecycle:
     public: true
+  Plan2net\RedirectLifecycle\Hook\LifecycleDataHandlerHook:
+    public: true
+  Plan2net\RedirectLifecycle\EventListener\LifecycleEventListener:
     tags:
       - name: event.listener
         identifier: redirect-lifecycle-creation

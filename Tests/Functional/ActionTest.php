@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Plan2net\RedirectLifecycle\Tests\Functional;
 
 use PHPUnit\Framework\Attributes\DataProvider;
-use Plan2net\RedirectLifecycle\RedirectLifecycle;
+use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Tester\CommandTester;

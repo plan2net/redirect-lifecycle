@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Plan2net\RedirectLifecycle;
+namespace Plan2net\RedirectLifecycle\Form\FormDataProvider;
 
 use TYPO3\CMS\Backend\Form\FormDataProviderInterface;
 
