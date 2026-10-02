@@ -7,6 +7,7 @@ namespace Plan2net\RedirectLifecycle\Hook;
 use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
+use TYPO3\CMS\Redirects\Hooks\DataHandlerCacheFlushingHook;
 use TYPO3\CMS\Redirects\Service\SlugService;
 
 final class LifecycleDataHandlerHook
@@ -48,6 +49,17 @@ final class LifecycleDataHandlerHook
             ? (int)($automatic ? $input['tx_redirectlifecycle_mode'] : $record['tx_redirectlifecycle_mode'])
             : null;
         $record = $this->lifecycle->prepareCreation($record, $mode);
+    }
+
+    public function rebuildRedirectCacheIfNecessary(array $parameters, DataHandler $dataHandler): void
+    {
+        if (($parameters['table'] ?? '') === 'sys_redirect'
+            && $this->lifecycle->restoreCacheHandled($dataHandler, (int)($parameters['uid'] ?? 0))
+        ) {
+            // Restore already published the cache or reported its committed publication failure.
+            return;
+        }
+        (new DataHandlerCacheFlushingHook())->rebuildRedirectCacheIfNecessary($parameters, $dataHandler);
     }
 
     public function processCmdmap(

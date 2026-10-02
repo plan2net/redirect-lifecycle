@@ -2,6 +2,7 @@
 <xliff version="1.2">
     <file source-language="en" datatype="plaintext" original="messages" product-name="redirect_lifecycle">
         <body>
+            <trans-unit id="cache.committedFailure" resname="cache.committedFailure"><source>Redirect UID %d was saved, but cache rebuilding failed. The database change was not rolled back.</source></trans-unit>
             <trans-unit id="action.adoptDescription" resname="action.adoptDescription"><source>Preview or explicitly adopt eligible existing redirects.</source></trans-unit>
             <trans-unit id="action.renewDescription" resname="action.renewDescription"><source>Preview or explicitly restart selected managed lifetimes.</source></trans-unit>
             <trans-unit id="action.uids" resname="action.uids"><source>Redirect UIDs; omission previews the whole stock for adoption.</source></trans-unit>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Plan2net\RedirectLifecycle\Service;
 
+use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Context\Context;
@@ -21,7 +22,12 @@ final class RedirectLifecycle
 {
     public const RENEWAL_ASPECT = 'redirect-lifecycle-renew';
 
+    private const COMMITTED_CACHE_FAILURE = 1791100801;
+
     private bool $restoring = false;
+
+    /** @var \WeakMap<DataHandler, array<int, true>> */
+    private \WeakMap $restoredRecords;
 
     public function __construct(
         private readonly Context $context,
@@ -29,7 +35,10 @@ final class RedirectLifecycle
         private readonly ExtensionConfiguration $extensionConfiguration,
         private readonly ConnectionPool $connectionPool,
         private readonly RedirectCacheService $redirectCacheService,
-    ) {}
+        private readonly LoggerInterface $logger,
+    ) {
+        $this->restoredRecords = new \WeakMap();
+    }
 
     public function prepareCreation(array $record, ?int $mode = null, ?Site $site = null): array
     {
@@ -83,34 +92,49 @@ final class RedirectLifecycle
             return;
         }
         $commandIsProcessed = true;
-        $this->write($uid, function (array &$record) use ($uid, $value, $dataHandler): ?string {
-            $before = $record;
-            $this->restoring = true;
-            try {
-                // Use the native public command path, preserving permissions, history, and references.
-                $restore = GeneralUtility::makeInstance(DataHandler::class);
-                $restore->start([], ['sys_redirect' => [$uid => ['undelete' => $value]]], $dataHandler->BE_USER);
-                if ($dataHandler->getCorrelationId() !== null) {
-                    $restore->setCorrelationId($dataHandler->getCorrelationId());
+        try {
+            $this->write($uid, function (array &$record) use ($uid, $value, $dataHandler): ?string {
+                $before = $record;
+                $this->restoring = true;
+                try {
+                    // Use the native public command path, preserving permissions, history, and references.
+                    $restore = GeneralUtility::makeInstance(DataHandler::class);
+                    $restore->start([], ['sys_redirect' => [$uid => ['undelete' => $value]]], $dataHandler->BE_USER);
+                    if ($dataHandler->getCorrelationId() !== null) {
+                        $restore->setCorrelationId($dataHandler->getCorrelationId());
+                    }
+                    $restore->process_cmdmap();
+                    $dataHandler->errorLog = array_merge($dataHandler->errorLog, $restore->errorLog);
+                } finally {
+                    $this->restoring = false;
                 }
-                $restore->process_cmdmap();
-                $dataHandler->errorLog = array_merge($dataHandler->errorLog, $restore->errorLog);
-            } finally {
-                $this->restoring = false;
+                $restored = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false);
+                if ($before && $before['deleted'] && $restored && !$restored['deleted']
+                    && (int)$restored['tx_redirectlifecycle_mode'] === 1
+                    && ($restored['redirect_type'] ?? 'default') === 'default'
+                ) {
+                    $initialized = $this->initialize($restored, 1, $this->findSite($restored));
+                    $this->connectionPool->getConnectionForTable('sys_redirect')->update('sys_redirect', array_intersect_key($initialized, array_flip([
+                        'endtime', 'tx_redirectlifecycle_delete_after',
+                    ])), ['uid' => $uid]);
+                }
+                $record = $restored ?: $record;
+                // Nested DataHandler defers its native cache queue until the outer command finishes.
+                $this->redirectCacheService->rebuildForHost($record['source_host']);
+                return null;
+            }, $record);
+        } catch (\RuntimeException $exception) {
+            if ($exception->getCode() !== self::COMMITTED_CACHE_FAILURE) {
+                throw $exception;
             }
-            $restored = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false);
-            if ($before && $before['deleted'] && $restored && !$restored['deleted']
-                && (int)$restored['tx_redirectlifecycle_mode'] === 1
-                && ($restored['redirect_type'] ?? 'default') === 'default'
-            ) {
-                $initialized = $this->initialize($restored, 1, $this->findSite($restored));
-                $this->connectionPool->getConnectionForTable('sys_redirect')->update('sys_redirect', array_intersect_key($initialized, array_flip([
-                    'endtime', 'tx_redirectlifecycle_delete_after',
-                ])), ['uid' => $uid]);
-            }
-            $record = $restored ?: $record;
-            return null;
-        }, $record);
+            $dataHandler->errorLog[] = $exception->getMessage();
+        }
+        $this->restoredRecords[$dataHandler] = ($this->restoredRecords[$dataHandler] ?? []) + [$uid => true];
+    }
+
+    public function restoreCacheHandled(DataHandler $dataHandler, int $uid): bool
+    {
+        return isset($this->restoredRecords[$dataHandler][$uid]);
     }
 
     /** Null means applied; a reason means skipped after checking the locked record. */
@@ -185,12 +209,24 @@ final class RedirectLifecycle
             $connection->commit();
         } catch (\Throwable $exception) {
             $connection->rollBack();
-            $this->redirectCacheService->rebuildForHost($record['source_host'] ?? $sourceHost);
+            try {
+                $this->redirectCacheService->rebuildForHost($record['source_host'] ?? $sourceHost);
+            } catch (\Throwable $cacheException) {
+                $this->logCacheFailure($uid, $cacheException, ['writeException' => $exception]);
+            }
             throw $exception;
         }
         if ($reason === null) {
             // DataHandler rebuilds inside the transaction; refresh again after committing.
-            $this->redirectCacheService->rebuildForHost($record['source_host'] ?? $sourceHost);
+            try {
+                $this->redirectCacheService->rebuildForHost($record['source_host'] ?? $sourceHost);
+            } catch (\Throwable $exception) {
+                $this->logCacheFailure($uid, $exception);
+                throw new \RuntimeException(sprintf(
+                    $GLOBALS['LANG']->sL('LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:cache.committedFailure'),
+                    $uid,
+                ), self::COMMITTED_CACHE_FAILURE, $exception);
+            }
         }
         return $reason;
     }
@@ -300,8 +336,22 @@ final class RedirectLifecycle
             ]));
         } while ($connection->update('sys_redirect', $dates, $criteria) === 0);
 
-        $this->redirectCacheService->rebuildForHost($record['source_host']);
+        try {
+            $this->redirectCacheService->rebuildForHost($record['source_host']);
+        } catch (\Throwable $exception) {
+            $this->logCacheFailure($uid, $exception);
+        }
         return $dates;
+    }
+
+    private function logCacheFailure(int $uid, \Throwable $exception, array $context = []): void
+    {
+        try {
+            $this->logger->error('Redirect cache rebuilding failed.', $context + ['uid' => $uid, 'exception' => $exception]);
+        } catch (\Throwable $loggingException) {
+            // A failing log writer must not replace the write error or interrupt a redirect.
+            error_log(sprintf('Redirect %d cache rebuilding failed: %s; logging failed: %s', $uid, $exception->getMessage(), $loggingException->getMessage()));
+        }
     }
 
     private function initialize(array $record, int $mode, ?Site $site): array
