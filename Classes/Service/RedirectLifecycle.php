@@ -273,7 +273,9 @@ final class RedirectLifecycle
 
     public function cleanupCandidates(int $now): array
     {
-        return $this->cleanupQuery($now)->executeQuery()->fetchAllAssociative();
+        return $this->cleanupQuery($now)
+            ->select('uid', 'source_host', 'source_path', 'endtime', 'tx_redirectlifecycle_delete_after')
+            ->executeQuery()->fetchAllAssociative();
     }
 
     private function cleanupQuery(int $now): QueryBuilder
@@ -281,13 +283,15 @@ final class RedirectLifecycle
         $query = $this->connectionPool->getQueryBuilderForTable('sys_redirect');
         // Expired records are the candidates, so native enable-field restrictions must be removed.
         $query->getRestrictions()->removeAll();
-        $query->select('*')->from('sys_redirect')->orderBy('uid')->where(
+        $query->select('uid')->from('sys_redirect')->orderBy('uid')->where(
             $query->expr()->eq('deleted', 0),
             $query->expr()->eq('disabled', 0),
             $query->expr()->eq('protected', 0),
             $query->expr()->eq('tx_redirectlifecycle_mode', self::MODE_MANAGED),
             $query->expr()->gt('endtime', 0),
             $query->expr()->lt('endtime', $query->createNamedParameter($now, Connection::PARAM_INT)),
+            // Exclude unlimited records from the indexed deletion-time range.
+            $query->expr()->gt('tx_redirectlifecycle_delete_after', 0),
             $query->expr()->gte('tx_redirectlifecycle_delete_after', 'endtime'),
             $query->expr()->lte('tx_redirectlifecycle_delete_after', $query->createNamedParameter($now, Connection::PARAM_INT)),
         );
@@ -340,8 +344,15 @@ final class RedirectLifecycle
         $query = $connection->createQueryBuilder();
         // The generic endtime restriction excludes the final second; Core redirect matching includes it.
         $query->getRestrictions()->removeAll();
-        $query->select('*')->from('sys_redirect')
+        // Only eligibility, dates, and cache host are needed; these also form the update guard.
+        $query->select(
+            'uid', 'tx_redirectlifecycle_mode', 'protected', 'disabled', 'deleted',
+            'starttime', 'endtime', 'tx_redirectlifecycle_delete_after', 'source_host',
+        )->from('sys_redirect')
             ->where($query->expr()->eq('uid', $query->createNamedParameter($uid, Connection::PARAM_INT)));
+        if (isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
+            $query->addSelect('redirect_type');
+        }
         do {
             $record = $query->executeQuery()->fetchAssociative();
             if (!$record || (int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED
@@ -376,11 +387,7 @@ final class RedirectLifecycle
                 'tx_redirectlifecycle_delete_after' => max((int)$record['tx_redirectlifecycle_delete_after'], $expiry + $grace * self::SECONDS_PER_DAY),
             ];
             // Retry from fresh data if another request or backend change wins the update.
-            $criteria = array_intersect_key($record, array_flip([
-                'uid', 'tx_redirectlifecycle_mode', 'protected', 'disabled', 'deleted',
-                'starttime', 'endtime', 'tx_redirectlifecycle_delete_after', 'redirect_type', 'source_host',
-            ]));
-        } while ($connection->update('sys_redirect', $dates, $criteria) === 0);
+        } while ($connection->update('sys_redirect', $dates, $record) === 0);
 
         try {
             $this->redirectCacheService->rebuildForHost($record['source_host']);

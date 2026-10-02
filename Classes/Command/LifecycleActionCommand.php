@@ -55,7 +55,13 @@ final class LifecycleActionCommand extends Command
         $uids = array_values(array_unique($uids));
         $query = $this->connectionPool->getQueryBuilderForTable('sys_redirect');
         $query->getRestrictions()->removeAll();
-        $query->select('*')->from('sys_redirect')->orderBy('uid');
+        $query->select(
+            'uid', 'source_host', 'source_path', 'tx_redirectlifecycle_mode',
+            'deleted', 'protected', 'disabled', 'starttime', 'endtime',
+        )->from('sys_redirect')->orderBy('uid');
+        if (isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
+            $query->addSelect('redirect_type');
+        }
         if ($uids !== []) {
             $query->where($query->expr()->in('uid', $query->createNamedParameter($uids, Connection::PARAM_INT_ARRAY)));
         }
