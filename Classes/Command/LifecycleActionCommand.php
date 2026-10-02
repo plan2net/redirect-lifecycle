@@ -20,6 +20,8 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 final class LifecycleActionCommand extends Command
 {
+    private const INVALID_REDIRECT_UID = 1791014403;
+
     private readonly LanguageService $languageService;
 
     public function __construct(
@@ -46,7 +48,7 @@ final class LifecycleActionCommand extends Command
         $uids = [];
         foreach ($input->getArgument('uids') as $uid) {
             if (filter_var($uid, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
-                throw new \InvalidArgumentException($this->label('invalidUid'), 1791014403);
+                throw new \InvalidArgumentException($this->label('invalidUid'), self::INVALID_REDIRECT_UID);
             }
             $uids[] = (int)$uid;
         }

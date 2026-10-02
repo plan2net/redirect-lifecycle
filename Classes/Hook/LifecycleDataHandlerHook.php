@@ -12,6 +12,8 @@ use TYPO3\CMS\Redirects\Service\SlugService;
 
 final class LifecycleDataHandlerHook
 {
+    private const INVALID_LIFECYCLE_MODE = 1790928002;
+
     public function __construct(private readonly RedirectLifecycle $lifecycle) {}
 
     public function processDatamap_postProcessFieldArray(
@@ -26,9 +28,12 @@ final class LifecycleDataHandlerHook
         }
         $input = $dataHandler->datamap[$table][$id];
         if (isset($input['tx_redirectlifecycle_mode'])
-            && !in_array($input['tx_redirectlifecycle_mode'], [0, 1, 2, '0', '1', '2'], true)
+            && !in_array($input['tx_redirectlifecycle_mode'], [
+                RedirectLifecycle::MODE_UNMANAGED, RedirectLifecycle::MODE_MANAGED, RedirectLifecycle::MODE_FIXED,
+                (string)RedirectLifecycle::MODE_UNMANAGED, (string)RedirectLifecycle::MODE_MANAGED, (string)RedirectLifecycle::MODE_FIXED,
+            ], true)
         ) {
-            throw new \InvalidArgumentException('Lifecycle mode must be 0 (unmanaged), 1 (managed), or 2 (fixed).', 1790928002);
+            throw new \InvalidArgumentException('Lifecycle mode must be 0 (unmanaged), 1 (managed), or 2 (fixed).', self::INVALID_LIFECYCLE_MODE);
         }
         $aspects = $dataHandler->getCorrelationId()?->getAspects() ?? [];
         if ($status === 'update') {
@@ -38,7 +43,7 @@ final class LifecycleDataHandlerHook
             }
             // Core removes unchanged fields before this hook; explicit renewal still needs field permission.
             $renew = in_array(RedirectLifecycle::RENEWAL_ASPECT, $aspects, true)
-                && in_array($input['tx_redirectlifecycle_mode'] ?? null, [1, '1'], true)
+                && in_array($input['tx_redirectlifecycle_mode'] ?? null, [RedirectLifecycle::MODE_MANAGED, (string)RedirectLifecycle::MODE_MANAGED], true)
                 && ($dataHandler->BE_USER->isAdmin() || $dataHandler->BE_USER->check('non_exclude_fields', 'sys_redirect:tx_redirectlifecycle_mode'));
             $record = $this->lifecycle->prepareUpdate($previous, $record, $renew);
             return;

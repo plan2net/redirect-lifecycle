@@ -22,6 +22,27 @@ final class RedirectLifecycle
 {
     public const RENEWAL_ASPECT = 'redirect-lifecycle-renew';
 
+    public const MODE_UNMANAGED = 0;
+    public const MODE_MANAGED = 1;
+    public const MODE_FIXED = 2;
+
+    private const DEFAULT_MINIMUM_REMAINING_LIFETIME = 90;
+    private const DEFAULT_RENEWAL_LIFETIME = 180;
+
+    // Core endtime uses an unsigned 32-bit timestamp on all supported TYPO3 versions.
+    private const MAX_CORE_ENDTIME = 4_294_967_295;
+
+    // Fixed 24-hour days for hit renewal and cleanup, independent of daylight saving.
+    private const SECONDS_PER_DAY = 24 * 60 * 60;
+
+    private const INVALID_PERIOD_VALUE = 1790928001;
+    private const CLEANUP_GRACE_PERIOD_OVERFLOW = 1790928003;
+    private const INVALID_MINIMUM_REMAINING_LIFETIME = 1790928004;
+    private const CLEANUP_FAILED = 1791014401;
+    private const INITIAL_LIFETIME_OUT_OF_RANGE = 1791014402;
+    private const LIFETIME_FIELD_PERMISSION_DENIED = 1791014404;
+    private const LIFETIME_RESTART_FAILED = 1791014405;
+    private const INVALID_RENEWAL_LIFETIME = 1791100802;
     private const COMMITTED_CACHE_FAILURE = 1791100801;
 
     private bool $restoring = false;
@@ -42,7 +63,7 @@ final class RedirectLifecycle
 
     public function prepareCreation(array $record, ?int $mode = null, ?Site $site = null): array
     {
-        $mode ??= (int)($record['endtime'] ?? 0) > 0 ? 2 : 1;
+        $mode ??= (int)($record['endtime'] ?? 0) > 0 ? self::MODE_FIXED : self::MODE_MANAGED;
         return $this->initialize($record, $mode, $site ?? $this->findSite($record));
     }
 
@@ -50,26 +71,26 @@ final class RedirectLifecycle
     {
         $current = array_replace($previous, $record);
         if (($current['redirect_type'] ?? 'default') !== 'default') {
-            $record['endtime'] = (int)$previous['tx_redirectlifecycle_mode'] === 1 ? $previous['endtime'] : $current['endtime'];
-            $record['tx_redirectlifecycle_mode'] = (int)$record['endtime'] > 0 ? 2 : 0;
+            $record['endtime'] = (int)$previous['tx_redirectlifecycle_mode'] === self::MODE_MANAGED ? $previous['endtime'] : $current['endtime'];
+            $record['tx_redirectlifecycle_mode'] = (int)$record['endtime'] > 0 ? self::MODE_FIXED : self::MODE_UNMANAGED;
             $record['tx_redirectlifecycle_delete_after'] = 0;
             return $record;
         }
         $mode = (int)($record['tx_redirectlifecycle_mode'] ?? $previous['tx_redirectlifecycle_mode']);
-        if ($mode !== 1) {
+        if ($mode !== self::MODE_MANAGED) {
             $record['tx_redirectlifecycle_delete_after'] = 0;
-            if ($mode === 0 && (int)$previous['tx_redirectlifecycle_mode'] === 1) {
+            if ($mode === self::MODE_UNMANAGED && (int)$previous['tx_redirectlifecycle_mode'] === self::MODE_MANAGED) {
                 $record['endtime'] = 0;
             }
             if ((int)($record['endtime'] ?? $previous['endtime']) === 0) {
-                $record['tx_redirectlifecycle_mode'] = 0;
+                $record['tx_redirectlifecycle_mode'] = self::MODE_UNMANAGED;
             }
-        } elseif ((int)$previous['tx_redirectlifecycle_mode'] !== 1
+        } elseif ((int)$previous['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED
             || $renew
             || (bool)($record['protected'] ?? $previous['protected']) !== (bool)$previous['protected']
             || (!empty($previous['disabled']) && empty($current['disabled']))
         ) {
-            $initialized = $this->initialize($current, 1, $this->findSite($current));
+            $initialized = $this->initialize($current, self::MODE_MANAGED, $this->findSite($current));
             foreach (['endtime', 'tx_redirectlifecycle_delete_after', 'tx_redirectlifecycle_mode'] as $field) {
                 $record[$field] = $initialized[$field];
             }
@@ -86,7 +107,7 @@ final class RedirectLifecycle
         }
         $record = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false);
         if (!$record || !$record['deleted']
-            || (int)$record['tx_redirectlifecycle_mode'] !== 1
+            || (int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED
             || ($record['redirect_type'] ?? 'default') !== 'default'
         ) {
             return;
@@ -110,10 +131,10 @@ final class RedirectLifecycle
                 }
                 $restored = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false);
                 if ($before && $before['deleted'] && $restored && !$restored['deleted']
-                    && (int)$restored['tx_redirectlifecycle_mode'] === 1
+                    && (int)$restored['tx_redirectlifecycle_mode'] === self::MODE_MANAGED
                     && ($restored['redirect_type'] ?? 'default') === 'default'
                 ) {
-                    $initialized = $this->initialize($restored, 1, $this->findSite($restored));
+                    $initialized = $this->initialize($restored, self::MODE_MANAGED, $this->findSite($restored));
                     $this->connectionPool->getConnectionForTable('sys_redirect')->update('sys_redirect', array_intersect_key($initialized, array_flip([
                         'endtime', 'tx_redirectlifecycle_delete_after',
                     ])), ['uid' => $uid]);
@@ -151,7 +172,7 @@ final class RedirectLifecycle
             $dataHandler->start([], ['sys_redirect' => [$uid => ['delete' => 1]]]);
             $dataHandler->process_cmdmap();
             if ($dataHandler->errorLog !== []) {
-                throw new \RuntimeException(implode("\n", $dataHandler->errorLog), 1791014401);
+                throw new \RuntimeException(implode("\n", $dataHandler->errorLog), self::CLEANUP_FAILED);
             }
             return null;
         });
@@ -166,7 +187,7 @@ final class RedirectLifecycle
     /** @return array{endtime: int, shortens: bool, state: string} */
     public function previewRenewal(array $record): array
     {
-        $preview = $this->prepareCreation($record, 1);
+        $preview = $this->prepareCreation($record, self::MODE_MANAGED);
         $expiry = (int)$preview['endtime'];
         $now = $this->context->getAspect('date')->getDateTime()->getTimestamp();
         return [
@@ -196,19 +217,19 @@ final class RedirectLifecycle
                 return 'changed';
             }
             if (!$GLOBALS['BE_USER']->isAdmin() && !$GLOBALS['BE_USER']->check('non_exclude_fields', 'sys_redirect:tx_redirectlifecycle_mode')) {
-                throw new \RuntimeException($GLOBALS['LANG']->sL('LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:action.permission'), 1791014404);
+                throw new \RuntimeException($GLOBALS['LANG']->sL('LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:action.permission'), self::LIFETIME_FIELD_PERMISSION_DENIED);
             }
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
             // Native non-admin validation requires source and target, even when unchanged.
             $dataHandler->start(['sys_redirect' => [$uid => [
-                'tx_redirectlifecycle_mode' => 1, 'source_host' => $record['source_host'], 'target' => $record['target'],
+                'tx_redirectlifecycle_mode' => self::MODE_MANAGED, 'source_host' => $record['source_host'], 'target' => $record['target'],
             ]]], []);
             if (!$adopt && $dataHandler->getCorrelationId() !== null) {
                 $dataHandler->setCorrelationId($dataHandler->getCorrelationId()->withAspects(self::RENEWAL_ASPECT));
             }
             $dataHandler->process_datamap();
             if ($dataHandler->errorLog !== []) {
-                throw new \RuntimeException(implode("\n", $dataHandler->errorLog), 1791014405);
+                throw new \RuntimeException(implode("\n", $dataHandler->errorLog), self::LIFETIME_RESTART_FAILED);
             }
             return null;
         });
@@ -264,7 +285,7 @@ final class RedirectLifecycle
             $query->expr()->eq('deleted', 0),
             $query->expr()->eq('disabled', 0),
             $query->expr()->eq('protected', 0),
-            $query->expr()->eq('tx_redirectlifecycle_mode', 1),
+            $query->expr()->eq('tx_redirectlifecycle_mode', self::MODE_MANAGED),
             $query->expr()->gt('endtime', 0),
             $query->expr()->lt('endtime', $query->createNamedParameter($now, Connection::PARAM_INT)),
             $query->expr()->gte('tx_redirectlifecycle_delete_after', 'endtime'),
@@ -288,10 +309,10 @@ final class RedirectLifecycle
             return 'excludedType';
         }
         if ($adopt) {
-            if ((int)$record['tx_redirectlifecycle_mode'] === 1) {
+            if ((int)$record['tx_redirectlifecycle_mode'] === self::MODE_MANAGED) {
                 return 'alreadyManaged';
             }
-            if ((int)$record['tx_redirectlifecycle_mode'] !== 0 || (int)$record['endtime'] !== 0) {
+            if ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_UNMANAGED || (int)$record['endtime'] !== 0) {
                 return 'fixed';
             }
             if ($record['protected']) {
@@ -303,8 +324,8 @@ final class RedirectLifecycle
             if ((int)$record['starttime'] > $this->context->getAspect('date')->getDateTime()->getTimestamp()) {
                 return 'notStarted';
             }
-        } elseif ((int)$record['tx_redirectlifecycle_mode'] !== 1) {
-            return (int)$record['tx_redirectlifecycle_mode'] === 2 || (int)$record['endtime'] > 0 ? 'fixed' : 'unmanaged';
+        } elseif ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED) {
+            return (int)$record['tx_redirectlifecycle_mode'] === self::MODE_FIXED || (int)$record['endtime'] > 0 ? 'fixed' : 'unmanaged';
         }
         return 'eligible';
     }
@@ -323,30 +344,36 @@ final class RedirectLifecycle
             ->where($query->expr()->eq('uid', $query->createNamedParameter($uid, Connection::PARAM_INT)));
         do {
             $record = $query->executeQuery()->fetchAssociative();
-            if (!$record || (int)$record['tx_redirectlifecycle_mode'] !== 1
+            if (!$record || (int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED
                 || $record['protected'] || $record['disabled'] || $record['deleted']
                 || (int)$record['starttime'] > $now || (int)$record['endtime'] === 0 || (int)$record['endtime'] < $now
                 || ($record['redirect_type'] ?? 'default') !== 'default'
             ) {
                 return null;
             }
-            $settings = $this->extensionConfiguration->get('redirect_lifecycle') + ['minimumRemainingLifetime' => 90];
+            $settings = $this->extensionConfiguration->get('redirect_lifecycle') + [
+                'minimumRemainingLifetime' => self::DEFAULT_MINIMUM_REMAINING_LIFETIME,
+                'renewalLifetime' => self::DEFAULT_RENEWAL_LIFETIME,
+            ];
             $minimum = $this->nonNegativeInteger($settings['minimumRemainingLifetime'], 'minimumRemainingLifetime');
-            // Core endtime is an unsigned 32-bit timestamp on all supported versions.
-            if ($minimum === 0 || $minimum > intdiv(min(PHP_INT_MAX, 4294967295) - $now, 86400)) {
-                throw new \InvalidArgumentException('Minimum remaining lifetime must be positive and fit the timestamp range.', 1790928004);
+            if ($minimum === 0 || $minimum > intdiv(min(PHP_INT_MAX, self::MAX_CORE_ENDTIME) - $now, self::SECONDS_PER_DAY)) {
+                throw new \InvalidArgumentException('Minimum remaining lifetime must be positive and fit the timestamp range.', self::INVALID_MINIMUM_REMAINING_LIFETIME);
             }
-            $expiry = $now + $minimum * 86400;
-            if ($expiry <= (int)$record['endtime']) {
+            $renewal = $this->nonNegativeInteger($settings['renewalLifetime'], 'renewalLifetime');
+            if ($renewal <= $minimum || $renewal > intdiv(min(PHP_INT_MAX, self::MAX_CORE_ENDTIME) - $now, self::SECONDS_PER_DAY)) {
+                throw new \InvalidArgumentException('Renewal lifetime must exceed the minimum remaining lifetime and fit the timestamp range.', self::INVALID_RENEWAL_LIFETIME);
+            }
+            if ($now + $minimum * self::SECONDS_PER_DAY <= (int)$record['endtime']) {
                 return null;
             }
+            $expiry = $now + $renewal * self::SECONDS_PER_DAY;
             $grace = $this->nonNegativeInteger($settings['cleanupGracePeriod'], 'cleanupGracePeriod');
-            if ($grace > intdiv(PHP_INT_MAX - $expiry, 86400)) {
-                throw new \InvalidArgumentException('Cleanup grace period exceeds the supported timestamp range.', 1790928003);
+            if ($grace > intdiv(PHP_INT_MAX - $expiry, self::SECONDS_PER_DAY)) {
+                throw new \InvalidArgumentException('Cleanup grace period exceeds the supported timestamp range.', self::CLEANUP_GRACE_PERIOD_OVERFLOW);
             }
             $dates = [
                 'endtime' => $expiry,
-                'tx_redirectlifecycle_delete_after' => max((int)$record['tx_redirectlifecycle_delete_after'], $expiry + $grace * 86400),
+                'tx_redirectlifecycle_delete_after' => max((int)$record['tx_redirectlifecycle_delete_after'], $expiry + $grace * self::SECONDS_PER_DAY),
             ];
             // Retry from fresh data if another request or backend change wins the update.
             $criteria = array_intersect_key($record, array_flip([
@@ -375,15 +402,15 @@ final class RedirectLifecycle
 
     private function initialize(array $record, int $mode, ?Site $site): array
     {
-        if ($mode === 2 && (int)($record['endtime'] ?? 0) === 0) {
-            $mode = 0;
+        if ($mode === self::MODE_FIXED && (int)($record['endtime'] ?? 0) === 0) {
+            $mode = self::MODE_UNMANAGED;
         }
         if (($record['redirect_type'] ?? 'default') !== 'default') {
-            $mode = (int)($record['endtime'] ?? 0) > 0 ? 2 : 0;
+            $mode = (int)($record['endtime'] ?? 0) > 0 ? self::MODE_FIXED : self::MODE_UNMANAGED;
         }
         $record['tx_redirectlifecycle_mode'] = $mode;
         $record['tx_redirectlifecycle_delete_after'] = 0;
-        if ($mode !== 1) {
+        if ($mode !== self::MODE_MANAGED) {
             return $record;
         }
         $record['endtime'] = 0;
@@ -396,13 +423,13 @@ final class RedirectLifecycle
         $record['endtime'] = $ttl > 0
             ? $this->context->getAspect('date')->getDateTime()->modify('+' . $ttl . ' days')->getTimestamp()
             : 0;
-        if ($record['endtime'] < 0 || $record['endtime'] > min(PHP_INT_MAX, 4294967295)) {
-            throw new \InvalidArgumentException('Initial lifetime exceeds the Core timestamp range.', 1791014402);
+        if ($record['endtime'] < 0 || $record['endtime'] > min(PHP_INT_MAX, self::MAX_CORE_ENDTIME)) {
+            throw new \InvalidArgumentException('Initial lifetime exceeds the Core timestamp range.', self::INITIAL_LIFETIME_OUT_OF_RANGE);
         }
-        if ($record['endtime'] > 0 && $grace > intdiv(PHP_INT_MAX - $record['endtime'], 86400)) {
-            throw new \InvalidArgumentException('Cleanup grace period exceeds the supported timestamp range.', 1790928003);
+        if ($record['endtime'] > 0 && $grace > intdiv(PHP_INT_MAX - $record['endtime'], self::SECONDS_PER_DAY)) {
+            throw new \InvalidArgumentException('Cleanup grace period exceeds the supported timestamp range.', self::CLEANUP_GRACE_PERIOD_OVERFLOW);
         }
-        $record['tx_redirectlifecycle_delete_after'] = $record['endtime'] > 0 ? $record['endtime'] + $grace * 86400 : 0;
+        $record['tx_redirectlifecycle_delete_after'] = $record['endtime'] > 0 ? $record['endtime'] + $grace * self::SECONDS_PER_DAY : 0;
         return $record;
     }
 
@@ -411,7 +438,7 @@ final class RedirectLifecycle
         if ((!is_int($value) && (!is_string($value) || !preg_match('/^(0|[1-9][0-9]*)$/D', $value)))
             || filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]) === false
         ) {
-            throw new \InvalidArgumentException($setting . ' must be a non-negative integer number of days.', 1790928001);
+            throw new \InvalidArgumentException($setting . ' must be a non-negative integer number of days.', self::INVALID_PERIOD_VALUE);
         }
         return (int)$value;
     }

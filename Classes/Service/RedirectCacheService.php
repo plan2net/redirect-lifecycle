@@ -11,6 +11,8 @@ use TYPO3\CMS\Redirects\Service\RedirectCacheService as CoreRedirectCacheService
 
 final class RedirectCacheService extends CoreRedirectCacheService
 {
+    private const CACHE_LOCK_FAILED = 1791100803;
+
     public function rebuildForHost(string $sourceHost): array
     {
         // Core matching uses '*' for both wildcard representations, including legacy empty hosts.
@@ -24,7 +26,7 @@ final class RedirectCacheService extends CoreRedirectCacheService
         // ponytail: Core locks coordinate one server; clustered deployments need a shared locking strategy.
         $lock = GeneralUtility::makeInstance(LockFactory::class)->createLocker('redirect-lifecycle-cache-' . sha1($sourceHost));
         if (!$lock->acquire()) {
-            throw new \RuntimeException('Unable to lock the redirect cache.', 1791014403);
+            throw new \RuntimeException('Unable to lock the redirect cache.', self::CACHE_LOCK_FAILED);
         }
         try {
             return parent::rebuildForHost($sourceHost);

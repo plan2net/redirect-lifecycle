@@ -14,6 +14,8 @@ use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Console\CommandRegistry;
 use TYPO3\CMS\Core\Configuration\SiteConfiguration;
 use TYPO3\CMS\Core\Configuration\SiteWriter;
+use TYPO3\CMS\Core\Cache\Backend\Typo3DatabaseBackend;
+use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
 use TYPO3\CMS\Core\Site\SiteFinder;
@@ -27,6 +29,12 @@ final class ActionTest extends FunctionalTestCase
 
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
+    // Retain cache entries across time jumps so cache misses cannot hide stale data.
+    protected array $configurationToUseInTestInstance = [
+        'SYS' => ['caching' => ['cacheConfigurations' => [
+            'pages' => ['backend' => Typo3DatabaseBackend::class, 'options' => ['defaultLifetime' => 0]],
+        ]]],
+    ];
 
     protected function setUp(): void
     {
@@ -213,6 +221,7 @@ final class ActionTest extends FunctionalTestCase
         $this->getConnectionPool()->getConnectionForTable('sys_redirect')->update('sys_redirect', ['createdon' => 1, 'lasthiton' => 1, 'hitcount' => 12], ['uid' => 100]);
         $service = $this->get(RedirectService::class);
         self::assertNotNull($service->matchRedirect('example.test', '/legacy'));
+        self::assertTrue($this->get(CacheManager::class)->getCache('pages')->has('redirects_' . sha1('example.test')));
         self::assertSame(0, $this->command('adopt')->execute(['uids' => ['100'], '--execute' => true]));
         $matched = $service->matchRedirect('example.test', '/legacy');
         self::assertNotNull($matched);
@@ -220,6 +229,7 @@ final class ActionTest extends FunctionalTestCase
         self::assertSame(12, (int)$this->record(100)['hitcount']);
         $this->setTime('2026-05-01 UTC');
         self::assertNull($service->matchRedirect('example.test', '/legacy'));
+        self::assertTrue($this->get(CacheManager::class)->getCache('pages')->has('redirects_' . sha1('example.test')));
         self::assertSame(0, $this->command('renew')->execute(['uids' => ['100'], '--execute' => true]));
         $matched = $service->matchRedirect('example.test', '/legacy');
         self::assertNotNull($matched);

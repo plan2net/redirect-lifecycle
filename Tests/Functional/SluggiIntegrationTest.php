@@ -63,8 +63,8 @@ final class SluggiIntegrationTest extends FunctionalTestCase
             $record, new Uri('https://example.test/renamed'),
         ));
         $renewed = $this->get(RedirectService::class)->matchRedirect('example.test', '/old');
-        self::assertSame(1775001600, (int)$renewed['endtime']);
-        self::assertSame(1782777600, (int)$renewed['tx_redirectlifecycle_delete_after']);
+        self::assertSame((new \DateTimeImmutable('2026-06-30 UTC'))->getTimestamp(), (int)$renewed['endtime']);
+        self::assertSame((new \DateTimeImmutable('2026-09-28 UTC'))->getTimestamp(), (int)$renewed['tx_redirectlifecycle_delete_after']);
         $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
         $dataHandler->start(['sys_redirect' => [$record['uid'] => ['protected' => 1]]], []);
         $dataHandler->process_datamap();

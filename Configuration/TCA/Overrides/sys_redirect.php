@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 
 ExtensionManagementUtility::addTCAcolumns('sys_redirect', [
@@ -13,21 +14,21 @@ ExtensionManagementUtility::addTCAcolumns('sys_redirect', [
         'config' => [
             'type' => 'select',
             'renderType' => 'selectSingle',
-            'default' => 0,
+            'default' => RedirectLifecycle::MODE_UNMANAGED,
             'fieldControl' => [
                 'renewLifetime' => ['renderType' => 'redirectLifecycleRenew'],
             ],
             'items' => [
-                ['label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode.unmanaged', 'value' => 0],
-                ['label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode.managed', 'value' => 1],
-                ['label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode.fixed', 'value' => 2],
+                ['label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode.unmanaged', 'value' => RedirectLifecycle::MODE_UNMANAGED],
+                ['label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode.managed', 'value' => RedirectLifecycle::MODE_MANAGED],
+                ['label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode.fixed', 'value' => RedirectLifecycle::MODE_FIXED],
             ],
         ],
     ],
     'tx_redirectlifecycle_delete_after' => [
         'exclude' => true,
         'label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:deleteAfter',
-        'displayCond' => 'FIELD:tx_redirectlifecycle_mode:=:1',
+        'displayCond' => 'FIELD:tx_redirectlifecycle_mode:=:' . RedirectLifecycle::MODE_MANAGED,
         'config' => ['type' => 'datetime', 'readOnly' => true],
     ],
 ]);

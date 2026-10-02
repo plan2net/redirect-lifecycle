@@ -47,7 +47,8 @@
             <trans-unit id="cleanup.expiry" resname="cleanup.expiry"><source>Expiry timestamp</source></trans-unit>
             <trans-unit id="cleanup.deletion" resname="cleanup.deletion"><source>Deletion timestamp</source></trans-unit>
             <trans-unit id="cleanup.candidates" resname="cleanup.candidates"><source>%d deletion candidates.</source></trans-unit>
-            <trans-unit id="settings.minimumRemainingLifetime" resname="settings.minimumRemainingLifetime"><source>Minimum remaining lifetime in days: A valid hit extends managed expiry to at least this many fixed days. Must be greater than zero.</source></trans-unit>
+            <trans-unit id="settings.minimumRemainingLifetime" resname="settings.minimumRemainingLifetime"><source>Minimum remaining lifetime in days: A valid hit renews managed expiry only below this threshold. Must be greater than zero and less than the renewal lifetime.</source></trans-unit>
+            <trans-unit id="settings.renewalLifetime" resname="settings.renewalLifetime"><source>Renewal lifetime in days: Remaining lifetime after renewal through a valid hit. Must exceed the minimum remaining lifetime. Uses fixed days; initial lifetime still follows redirectTTL.</source></trans-unit>
             <trans-unit id="mode" resname="mode"><source>Lifetime management</source></trans-unit>
             <trans-unit id="mode.description" resname="mode.description"><source>Switching to automatic management starts a full lifetime. Fixed expiry allows editing the end date. Ending management clears managed dates; fixed dates remain until explicitly removed.</source></trans-unit>
             <trans-unit id="mode.unmanaged" resname="mode.unmanaged"><source>No automatic management</source></trans-unit>

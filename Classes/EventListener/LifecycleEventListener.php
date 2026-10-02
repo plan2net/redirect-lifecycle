@@ -16,7 +16,7 @@ final class LifecycleEventListener
     {
         // Core-generated expiry is managed; TYPO3 13+ also supplies the unmanaged database default.
         $event->setRedirectRecord($this->lifecycle->prepareCreation(
-            $event->getRedirectRecord(), 1, $event->getSlugRedirectChangeItem()->getSite(),
+            $event->getRedirectRecord(), RedirectLifecycle::MODE_MANAGED, $event->getSlugRedirectChangeItem()->getSite(),
         ));
     }
 

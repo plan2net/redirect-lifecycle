@@ -8,18 +8,24 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
+use Psr\Log\NullLogger;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Tester\CommandTester;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Cache\Backend\Typo3DatabaseBackend;
+use TYPO3\CMS\Core\Cache\CacheManager;
+use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Console\CommandRegistry;
+use TYPO3\CMS\Core\Context\Context;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\ServerRequest;
 use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
+use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Redirects\Http\Middleware\RedirectHandler;
 use TYPO3\CMS\Redirects\Service\RedirectCacheService;
@@ -33,7 +39,7 @@ final class ConcurrencyTest extends FunctionalTestCase
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
     protected array $configurationToUseInTestInstance = [
         'SYS' => ['caching' => ['cacheConfigurations' => [
-            'pages' => ['backend' => Typo3DatabaseBackend::class],
+            'pages' => ['backend' => Typo3DatabaseBackend::class, 'options' => ['defaultLifetime' => 0]],
         ]]],
     ];
 
@@ -65,30 +71,49 @@ final class ConcurrencyTest extends FunctionalTestCase
         return (int)$dataHandler->substNEWwithIDs['NEWparallel'];
     }
 
-    public function testParallelRequestsNeverShortenDatesAndLeaveCurrentCache(): void
+    public function testOlderHitRetriesWhenAnotherProcessRenewsAfterItsRead(): void
     {
         $uid = $this->createRedirect();
         $now = (new \DateTimeImmutable('2026-01-01 UTC'))->getTimestamp();
-        $this->parallel(4, function (int $worker) use ($now): void {
-            for ($hit = 0; $hit < 100; ++$hit) {
-                $this->setTime($now + $worker * 100 + $hit);
-                $response = $this->get(RedirectHandler::class)->process(
-                    new ServerRequest('https://parallel.test/old', 'GET'),
-                    new class implements RequestHandlerInterface {
-                        public function handle(ServerRequestInterface $request): ResponseInterface
-                        {
-                            return new HtmlResponse('', 404);
-                        }
-                    },
-                );
-                if ($response->getStatusCode() !== 307 || $response->getHeaderLine('Location') !== 'https://target.test/new') {
-                    throw new \RuntimeException('Parallel request did not redirect.');
+        $barrier = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        self::assertNotFalse($barrier);
+        foreach ($barrier as $socket) {
+            stream_set_timeout($socket, 10);
+        }
+        try {
+            $this->parallel(2, function (int $worker) use ($uid, $now, $barrier): void {
+                $this->setTime($now + $worker);
+                if ($worker === 1) {
+                    self::assertSame("selected\n", fgets($barrier[1]));
+                    self::assertNotNull($this->get(RedirectLifecycle::class)->extendOnHit($uid));
+                    fwrite($barrier[1], "renewed\n");
+                    return;
                 }
-            }
-        });
+                $configuration = $this->createMock(ExtensionConfiguration::class);
+                $paused = false;
+                $configuration->method('get')->willReturnCallback(function () use ($barrier, &$paused): array {
+                    // Configuration is read after SELECT and before the conditional UPDATE.
+                    if (!$paused) {
+                        $paused = true;
+                        fwrite($barrier[0], "selected\n");
+                        self::assertSame("renewed\n", fgets($barrier[0]));
+                    }
+                    return $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'];
+                });
+                $lifecycle = new RedirectLifecycle(
+                    $this->get(Context::class), $this->get(SiteFinder::class), $configuration,
+                    $this->get(ConnectionPool::class), $this->get(RedirectCacheService::class), new NullLogger(),
+                );
+                self::assertNull($lifecycle->extendOnHit($uid));
+                self::assertTrue($paused);
+            });
+        } finally {
+            fclose($barrier[0]);
+            fclose($barrier[1]);
+        }
         $record = BackendUtility::getRecord('sys_redirect', $uid);
-        self::assertSame($now + 399 + 90 * 86400, (int)$record['endtime']);
-        self::assertSame($now + 399 + 180 * 86400, (int)$record['tx_redirectlifecycle_delete_after']);
+        self::assertSame($now + 1 + 180 * 86400, (int)$record['endtime']);
+        self::assertSame($now + 1 + 270 * 86400, (int)$record['tx_redirectlifecycle_delete_after']);
         $this->assertCurrentCache($uid, $record);
     }
 
@@ -201,7 +226,8 @@ final class ConcurrencyTest extends FunctionalTestCase
         $uid = $this->createRedirect();
         // Legacy installations may store an empty host instead of the current '*' default.
         $this->get(ConnectionPool::class)->getConnectionForTable('sys_redirect')->update('sys_redirect', ['source_host' => ''], ['uid' => $uid]);
-        $this->get(RedirectCacheService::class)->getRedirects('*');
+        // The direct SQL import bypasses native invalidation; publish the imported state first.
+        $this->get(RedirectCacheService::class)->rebuildForHost('*');
         $handler = new class implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
@@ -212,6 +238,7 @@ final class ConcurrencyTest extends FunctionalTestCase
         self::assertSame(307, $this->get(RedirectHandler::class)->process(new ServerRequest('https://other.test/old', 'GET'), $handler)->getStatusCode());
         // The populated wildcard cache must remain usable beyond the original ten-day expiry.
         $this->setTime((new \DateTimeImmutable('2026-01-12 UTC'))->getTimestamp());
+        self::assertTrue($this->get(CacheManager::class)->getCache('pages')->has('redirects_' . sha1('*')));
         self::assertSame(307, $this->get(RedirectHandler::class)->process(new ServerRequest('https://other.test/old', 'GET'), $handler)->getStatusCode());
         $record = BackendUtility::getRecord('sys_redirect', $uid);
         $cached = $this->get(RedirectCacheService::class)->getRedirects('*')['flat']['/old/'][$uid];

@@ -12,6 +12,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Console\CommandRegistry;
+use TYPO3\CMS\Core\Cache\Backend\Typo3DatabaseBackend;
+use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -29,6 +31,12 @@ final class CleanupTest extends FunctionalTestCase
 
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
+    // Retain cache entries across time jumps so cache misses cannot hide stale data.
+    protected array $configurationToUseInTestInstance = [
+        'SYS' => ['caching' => ['cacheConfigurations' => [
+            'pages' => ['backend' => Typo3DatabaseBackend::class, 'options' => ['defaultLifetime' => 0]],
+        ]]],
+    ];
 
     protected function setUp(): void
     {
@@ -161,6 +169,7 @@ final class CleanupTest extends FunctionalTestCase
         $cache = $this->get(RedirectCacheService::class);
         self::assertStringContainsString('/cleanup', json_encode($cache->getRedirects('example.test'), JSON_THROW_ON_ERROR));
         $this->setTime('2026-04-11');
+        self::assertTrue($this->get(CacheManager::class)->getCache('pages')->has('redirects_' . sha1('example.test')));
         self::assertSame(0, $this->command()->execute([]));
         $after = json_encode($cache->getRedirects('example.test'), JSON_THROW_ON_ERROR);
         self::assertStringNotContainsString('/cleanup', $after);
@@ -260,8 +269,8 @@ final class CleanupTest extends FunctionalTestCase
         self::assertSame(0, $command->run(new ArrayInput([]), $output));
         $after = $this->record((int)$record['uid']);
         self::assertSame(0, (int)$after['deleted']);
-        self::assertSame((new \DateTimeImmutable('2026-04-11 UTC'))->getTimestamp(), (int)$after['endtime']);
-        self::assertSame((new \DateTimeImmutable('2026-07-10 UTC'))->getTimestamp(), (int)$after['tx_redirectlifecycle_delete_after']);
+        self::assertSame((new \DateTimeImmutable('2026-07-10 UTC'))->getTimestamp(), (int)$after['endtime']);
+        self::assertSame((new \DateTimeImmutable('2026-10-08 UTC'))->getTimestamp(), (int)$after['tx_redirectlifecycle_delete_after']);
     }
 
     public function testDeniedDeletionRollsBackAndReportsFailure(): void

@@ -14,6 +14,8 @@ use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Configuration\SiteConfiguration;
 use TYPO3\CMS\Core\Configuration\SiteWriter;
 use TYPO3\CMS\Core\Console\CommandRegistry;
+use TYPO3\CMS\Core\Cache\Backend\Typo3DatabaseBackend;
+use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -28,6 +30,12 @@ final class LifecycleTest extends FunctionalTestCase
 
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
+    // Retain cache entries across time jumps so cache misses cannot hide stale data.
+    protected array $configurationToUseInTestInstance = [
+        'SYS' => ['caching' => ['cacheConfigurations' => [
+            'pages' => ['backend' => Typo3DatabaseBackend::class, 'options' => ['defaultLifetime' => 0]],
+        ]]],
+    ];
 
     protected function setUp(): void
     {
@@ -366,8 +374,8 @@ final class LifecycleTest extends FunctionalTestCase
             $form['renderType'] = 'singleFieldContainer';
             $form['fieldName'] = $field;
             $html = GeneralUtility::makeInstance(NodeFactory::class)->create($form)->render()['html'];
+            // Check the displayed value; random element IDs may contain '1970'.
             self::assertStringContainsString('value=""', $html);
-            self::assertStringNotContainsString('1970', $html);
         }
         self::assertSame(0, (int)BackendUtility::getRecord('sys_redirect', $record['uid'])['endtime']);
     }
@@ -429,6 +437,7 @@ final class LifecycleTest extends FunctionalTestCase
         $record = $this->createRedirect(['source_host' => 'example.test']);
         $service = $this->get(RedirectService::class);
         self::assertNotNull($service->matchRedirect('example.test', '/old'));
+        self::assertTrue($this->get(CacheManager::class)->getCache('pages')->has('redirects_' . sha1('example.test')));
         $this->updateRedirect($record, ['tx_redirectlifecycle_mode' => 2, 'endtime' => 1735689600]);
         self::assertNull($service->matchRedirect('example.test', '/old'));
     }
@@ -525,6 +534,7 @@ final class LifecycleTest extends FunctionalTestCase
         $this->commandRedirect($record, 'delete');
         self::assertNull($service->matchRedirect('example.test', '/old'));
         $this->setTime('2026-04-11 UTC');
+        self::assertTrue($this->get(CacheManager::class)->getCache('pages')->has('redirects_' . sha1('example.test')));
         $restored = $this->commandRedirect($record, 'undelete');
         $matched = $service->matchRedirect('example.test', '/old');
         self::assertNotNull($matched);

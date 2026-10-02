@@ -9,6 +9,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Plan2net\RedirectLifecycle\Tests\Functional\Fixtures\FailingCacheBackend;
 use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
@@ -27,9 +28,15 @@ final class RenewalTest extends FunctionalTestCase
 
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
+    // Keep the native cache warm across time jumps to isolate lifecycle-triggered writes.
+    protected array $configurationToUseInTestInstance = [
+        'SYS' => ['caching' => ['cacheConfigurations' => ['pages' => ['backend' => FailingCacheBackend::class, 'options' => ['defaultLifetime' => 0]]]]],
+    ];
 
     protected function setUp(): void
     {
+        FailingCacheBackend::$transactionFailure = FailingCacheBackend::$outsideFailure = null;
+        FailingCacheBackend::$attempts = [];
         parent::setUp();
         $this->importCSVDataSet(__DIR__ . '/Fixtures/Creation.csv');
         $user = $this->setUpBackendUser(1);
@@ -38,8 +45,15 @@ final class RenewalTest extends FunctionalTestCase
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => '10', 'cleanupGracePeriod' => '90'];
     }
 
+    protected function tearDown(): void
+    {
+        FailingCacheBackend::$transactionFailure = FailingCacheBackend::$outsideFailure = null;
+        FailingCacheBackend::$attempts = [];
+        parent::tearDown();
+    }
+
     #[DataProvider('disabledHitCounting')]
-    public function testValidRequestRenewsToNinetyDaysWithoutHitCounting(int $disableHitcount, bool $globalFeature): void
+    public function testValidRequestRenewsToOneHundredEightyDaysWithoutHitCounting(int $disableHitcount, bool $globalFeature): void
     {
         $GLOBALS['TYPO3_CONF_VARS']['SYS']['features']['redirects.hitCount'] = $globalFeature;
         $record = $this->createRedirect(['disable_hitcount' => $disableHitcount]);
@@ -47,8 +61,8 @@ final class RenewalTest extends FunctionalTestCase
         self::assertSame(307, $response->getStatusCode());
         self::assertSame('https://target.test/new', $response->getHeaderLine('Location'));
         $updated = BackendUtility::getRecord('sys_redirect', $record['uid']);
-        self::assertSame($this->timestamp('2026-04-01'), (int)$updated['endtime']);
-        self::assertSame($this->timestamp('2026-06-30'), (int)$updated['tx_redirectlifecycle_delete_after']);
+        self::assertSame($this->timestamp('2026-06-30'), (int)$updated['endtime']);
+        self::assertSame($this->timestamp('2026-09-28'), (int)$updated['tx_redirectlifecycle_delete_after']);
         self::assertSame(0, (int)$updated['hitcount']);
     }
 
@@ -75,7 +89,7 @@ final class RenewalTest extends FunctionalTestCase
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['cleanupGracePeriod'] = '0';
         self::assertSame(307, $this->request()->getStatusCode());
         $updated = BackendUtility::getRecord('sys_redirect', $record['uid']);
-        self::assertSame($this->timestamp('2026-04-01'), (int)$updated['endtime']);
+        self::assertSame($this->timestamp('2026-06-30'), (int)$updated['endtime']);
         self::assertSame($record['tx_redirectlifecycle_delete_after'], $updated['tx_redirectlifecycle_delete_after']);
     }
 
@@ -86,9 +100,9 @@ final class RenewalTest extends FunctionalTestCase
         $this->setTime($hitTime);
         self::assertSame($status, $this->request()->getStatusCode());
         $updated = BackendUtility::getRecord('sys_redirect', $record['uid']);
-        self::assertSame($renews ? $this->timestamp('2026-04-11') : (int)$record['endtime'], (int)$updated['endtime']);
+        self::assertSame($renews ? $this->timestamp('2026-07-10') : (int)$record['endtime'], (int)$updated['endtime']);
         if ($renews) {
-            self::assertSame($this->timestamp('2026-07-10'), (int)$updated['tx_redirectlifecycle_delete_after']);
+            self::assertSame($this->timestamp('2026-10-08'), (int)$updated['tx_redirectlifecycle_delete_after']);
             $this->setTime('2026-01-11 00:00:01 UTC');
             self::assertSame(307, $this->request()->getStatusCode());
         } else {
@@ -140,8 +154,8 @@ final class RenewalTest extends FunctionalTestCase
         $this->setTime('2026-01-03 00:00:00 UTC');
         self::assertSame(307, $this->request()->getStatusCode());
         $updated = BackendUtility::getRecord('sys_redirect', $record['uid']);
-        self::assertSame($this->timestamp('2026-04-03'), (int)$updated['endtime']);
-        self::assertSame($this->timestamp('2026-07-02'), (int)$updated['tx_redirectlifecycle_delete_after']);
+        self::assertSame($this->timestamp('2026-07-02'), (int)$updated['endtime']);
+        self::assertSame($this->timestamp('2026-09-30'), (int)$updated['tx_redirectlifecycle_delete_after']);
         $this->setTime('2026-01-02 00:00:00 UTC');
         $this->get(EventDispatcherInterface::class)->dispatch($event);
         $after = BackendUtility::getRecord('sys_redirect', $record['uid']);
@@ -202,14 +216,37 @@ final class RenewalTest extends FunctionalTestCase
         return [[0], ['-1'], ['1.5'], [true], [null], [50000]];
     }
 
-    public function testCurrentConfiguredMinimumIsUsed(): void
+    public function testCurrentConfiguredRenewalLifetimeIsUsed(): void
     {
         $record = $this->createRedirect();
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['minimumRemainingLifetime'] = '30';
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['renewalLifetime'] = '60';
         self::assertSame(307, $this->request()->getStatusCode());
         $updated = BackendUtility::getRecord('sys_redirect', $record['uid']);
-        self::assertSame($this->timestamp('2026-01-31'), (int)$updated['endtime']);
-        self::assertSame($this->timestamp('2026-05-01'), (int)$updated['tx_redirectlifecycle_delete_after']);
+        self::assertSame($this->timestamp('2026-03-02'), (int)$updated['endtime']);
+        self::assertSame($this->timestamp('2026-05-31'), (int)$updated['tx_redirectlifecycle_delete_after']);
+    }
+
+    public function testConfiguredMinimumControlsTheRenewalThreshold(): void
+    {
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] += [
+            'minimumRemainingLifetime' => '30', 'renewalLifetime' => '60',
+        ];
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['redirectTTL'] = '45';
+        $record = $this->createRedirect(['disable_hitcount' => 1]);
+        FailingCacheBackend::$attempts = [];
+        foreach (['2026-01-01 UTC', '2026-01-16 UTC'] as $time) {
+            $this->setTime($time);
+            self::assertSame(307, $this->request()->getStatusCode());
+            self::assertSame($record, BackendUtility::getRecord('sys_redirect', $record['uid']));
+        }
+        self::assertSame([], FailingCacheBackend::$attempts);
+        $this->setTime('2026-01-16 00:00:01 UTC');
+        self::assertSame(307, $this->request()->getStatusCode());
+        $updated = BackendUtility::getRecord('sys_redirect', $record['uid']);
+        self::assertSame($this->timestamp('2026-03-17') + 1, (int)$updated['endtime']);
+        self::assertSame($this->timestamp('2026-06-15') + 1, (int)$updated['tx_redirectlifecycle_delete_after']);
+        self::assertSame([0], FailingCacheBackend::$attempts);
     }
 
     public function testRenewalAndGraceUseFixedSecondsAcrossDaylightSavingChanges(): void
@@ -218,8 +255,51 @@ final class RenewalTest extends FunctionalTestCase
         $record = $this->createRedirect();
         self::assertSame(307, $this->request()->getStatusCode());
         $updated = BackendUtility::getRecord('sys_redirect', $record['uid']);
-        self::assertSame((new \DateTimeImmutable('2027-01-22 10:00:00 UTC'))->getTimestamp(), (int)$updated['endtime']);
-        self::assertSame((new \DateTimeImmutable('2027-04-22 10:00:00 UTC'))->getTimestamp(), (int)$updated['tx_redirectlifecycle_delete_after']);
+        self::assertSame((new \DateTimeImmutable('2027-04-22 10:00:00 UTC'))->getTimestamp(), (int)$updated['endtime']);
+        self::assertSame((new \DateTimeImmutable('2027-07-21 10:00:00 UTC'))->getTimestamp(), (int)$updated['tx_redirectlifecycle_delete_after']);
+    }
+
+    public function testRepeatedHitsDoNotWriteCacheUntilBelowMinimumRemainingLifetime(): void
+    {
+        $record = $this->createRedirect(['disable_hitcount' => 1]);
+        FailingCacheBackend::$attempts = [];
+        self::assertSame(307, $this->request()->getStatusCode());
+        self::assertSame([0], FailingCacheBackend::$attempts);
+        $renewed = BackendUtility::getRecord('sys_redirect', $record['uid']);
+        FailingCacheBackend::$attempts = [];
+        foreach (['2026-01-01 00:00:01 UTC', '2026-03-31 23:59:59 UTC', '2026-04-01 00:00:00 UTC'] as $time) {
+            $this->setTime($time);
+            self::assertSame(307, $this->request()->getStatusCode());
+            self::assertSame($renewed, BackendUtility::getRecord('sys_redirect', $record['uid']));
+        }
+        self::assertSame([], FailingCacheBackend::$attempts);
+        $this->setTime('2026-04-01 00:00:01 UTC');
+        self::assertSame(307, $this->request()->getStatusCode());
+        self::assertSame([0], FailingCacheBackend::$attempts);
+        $updated = BackendUtility::getRecord('sys_redirect', $record['uid']);
+        self::assertSame($this->timestamp('2026-09-28') + 1, (int)$updated['endtime']);
+        self::assertSame($this->timestamp('2026-12-27') + 1, (int)$updated['tx_redirectlifecycle_delete_after']);
+    }
+
+    #[DataProvider('invalidRenewalLifetimes')]
+    public function testInvalidRenewalLifetimeIsRejectedWithoutChangingRecord(mixed $value): void
+    {
+        $record = $this->createRedirect();
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['renewalLifetime'] = $value;
+        FailingCacheBackend::$attempts = [];
+        try {
+            $this->request();
+            self::fail('Invalid renewal lifetime must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertStringContainsString('renewal', strtolower($exception->getMessage()));
+        }
+        self::assertSame($record, BackendUtility::getRecord('sys_redirect', $record['uid']));
+        self::assertSame([], FailingCacheBackend::$attempts);
+    }
+
+    public static function invalidRenewalLifetimes(): array
+    {
+        return [[0], [89], [90], ['-1'], ['1.5'], [true], [null], [50000]];
     }
 
     private function hitEvent(array $record): RedirectWasHitEvent

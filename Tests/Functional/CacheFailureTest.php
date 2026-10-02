@@ -166,8 +166,8 @@ final class CacheFailureTest extends FunctionalTestCase
         );
         $this->get(EventDispatcherInterface::class)->dispatch($event);
         $after = $this->record();
-        self::assertSame($this->timestamp('2026-04-01'), (int)$after['endtime']);
-        self::assertSame($this->timestamp('2026-04-08'), (int)$after['tx_redirectlifecycle_delete_after']);
+        self::assertSame($this->timestamp('2026-06-30'), (int)$after['endtime']);
+        self::assertSame($this->timestamp('2026-07-07'), (int)$after['tx_redirectlifecycle_delete_after']);
         self::assertSame((int)$after['endtime'], (int)$event->getMatchedRedirect()['endtime']);
         self::assertSame((int)$after['tx_redirectlifecycle_delete_after'], (int)$event->getMatchedRedirect()['tx_redirectlifecycle_delete_after']);
         $this->assertCacheError($failure);
@@ -185,7 +185,7 @@ final class CacheFailureTest extends FunctionalTestCase
         });
         self::assertSame(307, $response->getStatusCode());
         self::assertSame('https://target.test/legacy', $response->getHeaderLine('Location'));
-        self::assertSame($this->timestamp('2026-04-01'), (int)$this->record()['endtime']);
+        self::assertSame($this->timestamp('2026-06-30'), (int)$this->record()['endtime']);
         $this->assertCacheError($failure);
     }
 
@@ -200,7 +200,7 @@ final class CacheFailureTest extends FunctionalTestCase
         });
         $failure = FailingCacheBackend::$outsideFailure = new \RuntimeException('Cache publication unavailable.');
         $dates = $this->get(RedirectLifecycle::class)->extendOnHit(100);
-        self::assertSame($this->timestamp('2026-04-01'), $dates['endtime']);
+        self::assertSame($this->timestamp('2026-06-30'), $dates['endtime']);
         self::assertSame($dates['endtime'], (int)$this->record()['endtime']);
         $this->assertCacheError($failure);
     }
