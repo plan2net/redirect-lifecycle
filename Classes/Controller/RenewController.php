@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Plan2net\RedirectLifecycle\Controller;
 
+use Plan2net\RedirectLifecycle\Backend\LifetimeRestartAccess;
 use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -12,13 +13,13 @@ use TYPO3\CMS\Backend\Template\ModuleTemplateFactory;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\FormProtection\FormProtectionFactory;
 use TYPO3\CMS\Core\Http\HtmlResponse;
-use TYPO3\CMS\Core\Type\Bitmask\Permission;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 final class RenewController
 {
     public function __construct(
         private readonly RedirectLifecycle $lifecycle,
+        private readonly LifetimeRestartAccess $access,
         private readonly ModuleTemplateFactory $moduleTemplateFactory,
         private readonly UriBuilder $uriBuilder,
         private readonly FormProtectionFactory $formProtectionFactory,
@@ -38,7 +39,7 @@ final class RenewController
             return new HtmlResponse('', 400);
         }
         $record = BackendUtility::getRecord('sys_redirect', $uid);
-        if (!$record || !$this->canEdit($record)) {
+        if (!$record || !$this->access->isAllowed($record)) {
             return new HtmlResponse(htmlspecialchars($this->label('denied')), 403);
         }
         $reason = $this->lifecycle->actionReason($record, false);
@@ -103,28 +104,6 @@ final class RenewController
             'message' => '', 'severity' => 'success',
         ]);
         return $module->renderResponse('Renew')->withStatus($feedback['status'] ?? 200);
-    }
-
-    private function canEdit(array $record): bool
-    {
-        $user = $GLOBALS['BE_USER'];
-        if (empty($user->user['uid'])) {
-            return false;
-        }
-        if ($user->isAdmin()) {
-            return true;
-        }
-        if (!$user->check('tables_select', 'sys_redirect') || !$user->check('tables_modify', 'sys_redirect')
-            || !$user->check('non_exclude_fields', 'sys_redirect:tx_redirectlifecycle_mode')
-        ) {
-            return false;
-        }
-        if ((int)$record['pid'] > 0 && !BackendUtility::getRecord('pages', (int)$record['pid'], 'uid', ' AND ' . $user->getPagePermsClause(Permission::CONTENT_EDIT))) {
-            return false;
-        }
-        return method_exists($user, 'checkRecordEditAccess')
-            ? $user->checkRecordEditAccess('sys_redirect', $record)->isAllowed
-            : $user->recordEditAccessInternals('sys_redirect', $record);
     }
 
     private function formatExpiry(int $timestamp): string

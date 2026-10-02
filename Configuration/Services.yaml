@@ -35,6 +35,8 @@ services:
     public: true
   Plan2net\RedirectLifecycle\Controller\RenewController:
     public: true
+  Plan2net\RedirectLifecycle\Backend\LifetimeRestartAccess:
+    public: true
   Plan2net\RedirectLifecycle\EventListener\LifecycleEventListener:
     tags:
       - name: event.listener

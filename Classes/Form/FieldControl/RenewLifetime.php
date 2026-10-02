@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Plan2net\RedirectLifecycle\Form\FieldControl;
 
+use Plan2net\RedirectLifecycle\Backend\LifetimeRestartAccess;
 use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use TYPO3\CMS\Backend\Form\AbstractNode;
 use TYPO3\CMS\Backend\Routing\UriBuilder;
@@ -29,10 +30,8 @@ final class RenewLifetime extends AbstractNode
             return [];
         }
         $record = BackendUtility::getRecord('sys_redirect', (int)$uid);
-        $user = $GLOBALS['BE_USER'];
         if (!$record || GeneralUtility::makeInstance(RedirectLifecycle::class)->actionReason($record, false) !== 'eligible'
-            || (!$user->isAdmin() && (!$user->check('tables_modify', 'sys_redirect')
-                || !$user->check('non_exclude_fields', 'sys_redirect:tx_redirectlifecycle_mode')))
+            || !GeneralUtility::makeInstance(LifetimeRestartAccess::class)->isAllowed($record)
         ) {
             return [];
         }

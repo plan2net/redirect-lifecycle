@@ -210,6 +210,39 @@ final class BackendRenewalTest extends FunctionalTestCase
         self::assertSame($before, $this->record());
     }
 
+    #[DataProvider('pagePermissions')]
+    public function testPagePermissionsAgreeForButtonPreviewAndConfirmation(bool $allowed): void
+    {
+        $this->update(['pid' => 4]);
+        $input = $this->confirmation();
+        $this->getConnectionPool()->getConnectionForTable('be_groups')->update('be_groups', [
+            'non_exclude_fields' => 'sys_redirect:tx_redirectlifecycle_mode',
+        ], ['uid' => 1]);
+        $this->getConnectionPool()->getConnectionForTable('pages')->update('pages', [
+            'perms_user' => $allowed ? 31 : 1,
+        ], ['uid' => 4]);
+        $GLOBALS['EXEC_TIME'] = time();
+        $this->setUpBackendUser(2);
+        $this->setTime('2026-01-10 UTC');
+        $before = $this->record();
+        self::assertSame($allowed, $this->button() !== []);
+        self::assertSame($allowed ? 200 : 403, $this->get(RenewController::class)->handle($this->request())->getStatusCode());
+        if ($allowed) {
+            $input = $this->confirmation();
+        }
+        self::assertSame($allowed ? 200 : 403, $this->get(RenewController::class)->handle($this->request('POST', $input))->getStatusCode());
+        if ($allowed) {
+            self::assertSame($this->timestamp('2026-01-15'), (int)$this->record()['endtime']);
+        } else {
+            self::assertSame($before, $this->record());
+        }
+    }
+
+    public static function pagePermissions(): array
+    {
+        return ['content edit allowed' => [true], 'read only page' => [false]];
+    }
+
     public function testConfirmationCannotBeReusedForAnotherRedirect(): void
     {
         $input = $this->confirmation();
