@@ -9,10 +9,9 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Console\CommandRegistry;
-use TYPO3\CMS\Core\Context\Context;
-use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -26,6 +25,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 final class CleanupTest extends FunctionalTestCase
 {
+    use TestClock;
+
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
 
@@ -285,14 +286,6 @@ final class CleanupTest extends FunctionalTestCase
     private function command(): CommandTester
     {
         return new CommandTester($this->get(CommandRegistry::class)->getCommandByIdentifier('redirect-lifecycle:cleanup'));
-    }
-
-    private function setTime(string $time): void
-    {
-        $date = new \DateTimeImmutable($time . ' UTC');
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect($date));
-        $GLOBALS['EXEC_TIME'] = $date->getTimestamp();
-        $GLOBALS['SIM_ACCESS_TIME'] = $date->getTimestamp();
     }
 
     private function createRedirect(array $fields = []): array

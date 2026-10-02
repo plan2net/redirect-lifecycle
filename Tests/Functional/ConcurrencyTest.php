@@ -8,14 +8,13 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Tester\CommandTester;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Cache\Backend\Typo3DatabaseBackend;
 use TYPO3\CMS\Core\Console\CommandRegistry;
-use TYPO3\CMS\Core\Context\Context;
-use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Http\HtmlResponse;
@@ -28,6 +27,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 final class ConcurrencyTest extends FunctionalTestCase
 {
+    use TestClock;
+
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
     protected array $configurationToUseInTestInstance = [
@@ -350,12 +351,5 @@ final class ConcurrencyTest extends FunctionalTestCase
                 fclose($socket);
             }
         }
-    }
-
-    private function setTime(int $timestamp): void
-    {
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('@' . $timestamp)));
-        $GLOBALS['EXEC_TIME'] = $timestamp;
-        $GLOBALS['SIM_ACCESS_TIME'] = $timestamp;
     }
 }

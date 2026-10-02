@@ -6,6 +6,7 @@ namespace Plan2net\RedirectLifecycle\Tests\Functional;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
+use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -13,8 +14,6 @@ use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Console\CommandRegistry;
 use TYPO3\CMS\Core\Configuration\SiteConfiguration;
 use TYPO3\CMS\Core\Configuration\SiteWriter;
-use TYPO3\CMS\Core\Context\Context;
-use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
 use TYPO3\CMS\Core\Site\SiteFinder;
@@ -24,6 +23,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 final class ActionTest extends FunctionalTestCase
 {
+    use TestClock;
+
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
 
@@ -33,7 +34,7 @@ final class ActionTest extends FunctionalTestCase
         $this->importCSVDataSet(__DIR__ . '/Fixtures/Creation.csv');
         $user = $this->setUpBackendUser(1);
         $GLOBALS['LANG'] = $this->get(LanguageServiceFactory::class)->createFromUserPreferences($user);
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-04-11 UTC')));
+        $this->setTime('2026-04-11 UTC');
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => '5', 'cleanupGracePeriod' => '7'];
     }
 
@@ -54,7 +55,7 @@ final class ActionTest extends FunctionalTestCase
         self::assertSame(1, (int)$adopted['tx_redirectlifecycle_mode']);
         self::assertSame((new \DateTimeImmutable('2026-04-16 UTC'))->getTimestamp(), (int)$adopted['endtime']);
         self::assertSame((new \DateTimeImmutable('2026-04-23 UTC'))->getTimestamp(), (int)$adopted['tx_redirectlifecycle_delete_after']);
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-05-01 UTC')));
+        $this->setTime('2026-05-01 UTC');
         self::assertSame(0, $this->command('adopt')->execute(['--execute' => true]));
         self::assertSame($adopted, $this->record(100));
     }
@@ -63,7 +64,7 @@ final class ActionTest extends FunctionalTestCase
     {
         self::assertSame(0, $this->command('adopt')->execute(['uids' => ['100'], '--execute' => true]));
         $before = $this->record(100);
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-05-01 UTC')));
+        $this->setTime('2026-05-01 UTC');
         self::assertSame(0, $this->command('renew')->execute(['uids' => ['100']]));
         self::assertSame($before, $this->record(100));
         self::assertSame(0, $this->command('renew')->execute(['uids' => ['100'], '--execute' => true]));
@@ -113,7 +114,7 @@ final class ActionTest extends FunctionalTestCase
         }
         $before = $this->record(100);
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['redirectTTL'] = $currentTtl;
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-05-01 UTC')));
+        $this->setTime('2026-05-01 UTC');
         $tester = $this->command('renew');
         self::assertSame(0, $tester->execute(['uids' => ['100', '100'], '--execute' => true]));
         self::assertStringContainsString('1 redirects updated.', $tester->getDisplay());
@@ -210,7 +211,6 @@ final class ActionTest extends FunctionalTestCase
     public function testAdoptionIgnoresAgeAndLastHitAndActionsRefreshPopulatedCache(): void
     {
         $this->getConnectionPool()->getConnectionForTable('sys_redirect')->update('sys_redirect', ['createdon' => 1, 'lasthiton' => 1, 'hitcount' => 12], ['uid' => 100]);
-        $GLOBALS['SIM_ACCESS_TIME'] = (new \DateTimeImmutable('2026-04-11 UTC'))->getTimestamp();
         $service = $this->get(RedirectService::class);
         self::assertNotNull($service->matchRedirect('example.test', '/legacy'));
         self::assertSame(0, $this->command('adopt')->execute(['uids' => ['100'], '--execute' => true]));
@@ -218,8 +218,7 @@ final class ActionTest extends FunctionalTestCase
         self::assertNotNull($matched);
         self::assertSame((new \DateTimeImmutable('2026-04-16 UTC'))->getTimestamp(), (int)$matched['endtime']);
         self::assertSame(12, (int)$this->record(100)['hitcount']);
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-05-01 UTC')));
-        $GLOBALS['SIM_ACCESS_TIME'] = (new \DateTimeImmutable('2026-05-01 UTC'))->getTimestamp();
+        $this->setTime('2026-05-01 UTC');
         self::assertNull($service->matchRedirect('example.test', '/legacy'));
         self::assertSame(0, $this->command('renew')->execute(['uids' => ['100'], '--execute' => true]));
         $matched = $service->matchRedirect('example.test', '/legacy');
@@ -253,7 +252,10 @@ final class ActionTest extends FunctionalTestCase
     public function testPreviewDoesNotAuthenticateCliUserAndExecuteKeepsFieldPermissions(): void
     {
         $before = $this->record(100);
+        // Native session authentication uses wall-clock time, independently of lifecycle test time.
+        $GLOBALS['EXEC_TIME'] = time();
         $this->setUpBackendUser(2);
+        $this->setTime('2026-04-11 UTC');
         $failed = false;
         try {
             $this->command('adopt')->execute(['uids' => ['100'], '--execute' => true]);
@@ -297,7 +299,10 @@ final class ActionTest extends FunctionalTestCase
     {
         $this->command('adopt')->execute(['uids' => ['100'], '--execute' => true]);
         $before = $this->record(100);
+        // Native session authentication uses wall-clock time, independently of lifecycle test time.
+        $GLOBALS['EXEC_TIME'] = time();
         $this->setUpBackendUser(2);
+        $this->setTime('2026-04-11 UTC');
         $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
         $dataHandler->start(['sys_redirect' => [100 => [
             'tx_redirectlifecycle_mode' => 1, 'source_host' => '*',

@@ -7,6 +7,7 @@ namespace Plan2net\RedirectLifecycle\Tests\Functional;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use Plan2net\RedirectLifecycle\Tests\Functional\Fixtures\FailingCacheBackend;
+use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -15,8 +16,6 @@ use Psr\Log\LogLevel;
 use Symfony\Component\Console\Tester\CommandTester;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Console\CommandRegistry;
-use TYPO3\CMS\Core\Context\Context;
-use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -33,6 +32,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 final class CacheFailureTest extends FunctionalTestCase
 {
+    use TestClock;
+
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
     protected array $configurationToUseInTestInstance = [
@@ -255,13 +256,6 @@ final class CacheFailureTest extends FunctionalTestCase
         return $this->getConnectionPool()->getConnectionForTable('sys_history')->count('*', 'sys_history', [
             'tablename' => 'sys_redirect', 'recuid' => 100,
         ]);
-    }
-
-    private function setTime(string $time): void
-    {
-        $date = new \DateTimeImmutable($time . ' UTC');
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect($date));
-        $GLOBALS['EXEC_TIME'] = $GLOBALS['SIM_ACCESS_TIME'] = $date->getTimestamp();
     }
 
     private function timestamp(string $time): int

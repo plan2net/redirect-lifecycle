@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace Plan2net\RedirectLifecycle\Tests\Functional;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Configuration\SiteConfiguration;
 use TYPO3\CMS\Core\Configuration\SiteWriter;
-use TYPO3\CMS\Core\Context\Context;
-use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -24,6 +23,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 final class SluggiIntegrationTest extends FunctionalTestCase
 {
+    use TestClock;
+
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['wazum/sluggi', 'plan2net/redirect-lifecycle'];
 
@@ -33,8 +34,7 @@ final class SluggiIntegrationTest extends FunctionalTestCase
         $this->importCSVDataSet(__DIR__ . '/Fixtures/Creation.csv');
         $user = $this->setUpBackendUser(1);
         $GLOBALS['LANG'] = $this->get(LanguageServiceFactory::class)->createFromUserPreferences($user);
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-01-01 UTC')));
-        $GLOBALS['EXEC_TIME'] = $GLOBALS['SIM_ACCESS_TIME'] = 1767225600;
+        $this->setTime('2026-01-01 UTC');
         $writer = class_exists(SiteWriter::class) ? $this->get(SiteWriter::class) : $this->get(SiteConfiguration::class);
         $writer->write('main', [
             'rootPageId' => 1, 'base' => 'https://example.test/',

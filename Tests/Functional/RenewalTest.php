@@ -9,9 +9,8 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
-use TYPO3\CMS\Core\Context\Context;
-use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Http\HtmlResponse;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -24,6 +23,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 final class RenewalTest extends FunctionalTestCase
 {
+    use TestClock;
+
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
 
@@ -229,14 +230,6 @@ final class RenewalTest extends FunctionalTestCase
             $record,
             new Uri('https://target.test/new'),
         );
-    }
-
-    private function setTime(string $time): void
-    {
-        $date = new \DateTimeImmutable($time);
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect($date));
-        $GLOBALS['EXEC_TIME'] = $date->getTimestamp();
-        $GLOBALS['SIM_ACCESS_TIME'] = $date->getTimestamp();
     }
 
     private function timestamp(string $date): int

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Plan2net\RedirectLifecycle\Tests\Functional;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use Symfony\Component\Console\Tester\CommandTester;
 use TYPO3\CMS\Backend\Form\FormDataCompiler;
 use TYPO3\CMS\Backend\Form\FormDataGroup\TcaDatabaseRecord;
@@ -13,8 +14,6 @@ use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Configuration\SiteConfiguration;
 use TYPO3\CMS\Core\Configuration\SiteWriter;
 use TYPO3\CMS\Core\Console\CommandRegistry;
-use TYPO3\CMS\Core\Context\Context;
-use TYPO3\CMS\Core\Context\DateTimeAspect;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -25,6 +24,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 final class LifecycleTest extends FunctionalTestCase
 {
+    use TestClock;
+
     protected array $coreExtensionsToLoad = ['redirects', 'scheduler'];
     protected array $testExtensionsToLoad = ['plan2net/redirect-lifecycle'];
 
@@ -34,7 +35,7 @@ final class LifecycleTest extends FunctionalTestCase
         $this->importCSVDataSet(__DIR__ . '/Fixtures/Creation.csv');
         $backendUser = $this->setUpBackendUser(1);
         $GLOBALS['LANG'] = $this->get(LanguageServiceFactory::class)->createFromUserPreferences($backendUser);
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-01-01 00:00:00 UTC')));
+        $this->setTime('2026-01-01 00:00:00 UTC');
     }
 
     public function testManualCreationUsesSiteTtlAndStoresGracePeriod(): void
@@ -199,7 +200,7 @@ final class LifecycleTest extends FunctionalTestCase
 
     public function testInitialLifetimeUsesCalendarDaysAcrossDaylightSavingChange(): void
     {
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-10-24 12:00:00 Europe/Vienna')));
+        $this->setTime('2026-10-24 12:00:00 Europe/Vienna');
         $this->configureSite('main', 1, 'https://example.test/', 2);
         $record = $this->createRedirect(['pid' => 4]);
         self::assertSame((new \DateTimeImmutable('2026-10-26 12:00:00 Europe/Vienna'))->getTimestamp(), (int)$record['endtime']);
@@ -374,7 +375,10 @@ final class LifecycleTest extends FunctionalTestCase
     public function testOrdinaryEditorCannotBypassLifecycleFieldPermissions(): void
     {
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => '365', 'cleanupGracePeriod' => '90'];
+        // Native session authentication uses wall-clock time, independently of lifecycle test time.
+        $GLOBALS['EXEC_TIME'] = time();
         $user = $this->setUpBackendUser(2);
+        $this->setTime('2026-01-01 UTC');
         self::assertFalse($user->isAdmin());
         self::assertTrue($user->check('tables_modify', 'sys_redirect'));
         $record = BackendUtility::getRecord('sys_redirect', 100);
@@ -390,7 +394,10 @@ final class LifecycleTest extends FunctionalTestCase
     public function testAutomaticCreationRemainsManagedForEditorsWithoutLifecycleFieldPermission(): void
     {
         $this->configureSite('main', 1, 'https://example.test/', 365);
+        // Native session authentication uses wall-clock time, independently of lifecycle test time.
+        $GLOBALS['EXEC_TIME'] = time();
         $this->setUpBackendUser(2);
+        $this->setTime('2026-01-01 UTC');
         $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
         $dataHandler->start(['pages' => [2 => ['slug' => '/new']]], []);
         $dataHandler->process_datamap();
@@ -430,7 +437,7 @@ final class LifecycleTest extends FunctionalTestCase
     {
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => '10', 'cleanupGracePeriod' => '90'];
         $record = $this->createRedirect();
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-04-11 UTC')));
+        $this->setTime('2026-04-11 UTC');
         $cleanup = new CommandTester($this->get(CommandRegistry::class)->getCommandByIdentifier('redirect-lifecycle:cleanup'));
         self::assertSame(0, $cleanup->execute([]));
         self::assertSame(1, (int)BackendUtility::getRecord('sys_redirect', $record['uid'], '*', '', false)['deleted']);
@@ -453,7 +460,7 @@ final class LifecycleTest extends FunctionalTestCase
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => '200', 'cleanupGracePeriod' => '90'];
         $record = $this->createRedirect($fields);
         $deleted = $this->commandRedirect($record, 'delete');
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-04-11 UTC')));
+        $this->setTime('2026-04-11 UTC');
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => $ttl, 'cleanupGracePeriod' => '7'];
         $restored = $this->commandRedirect($record, 'undelete');
         self::assertSame(0, (int)$restored['deleted']);
@@ -486,7 +493,7 @@ final class LifecycleTest extends FunctionalTestCase
         $record = $this->createRedirect();
         $this->commandRedirect($record, 'delete');
         $restored = $this->commandRedirect($record, 'undelete');
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-04-11 UTC')));
+        $this->setTime('2026-04-11 UTC');
         self::assertSame($restored, $this->commandRedirect($record, 'undelete'));
     }
 
@@ -498,7 +505,7 @@ final class LifecycleTest extends FunctionalTestCase
         $record = $this->createRedirect(['pid' => 4]);
         $this->commandRedirect($record, 'delete');
         $this->configureSite('main', 1, 'https://example.test/', $ttl);
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-04-11 UTC')));
+        $this->setTime('2026-04-11 UTC');
         $restored = $this->commandRedirect($record, 'undelete');
         self::assertSame((new \DateTimeImmutable($expiry . ' UTC'))->getTimestamp(), (int)$restored['endtime']);
         self::assertSame((new \DateTimeImmutable($deletion . ' UTC'))->getTimestamp(), (int)$restored['tx_redirectlifecycle_delete_after']);
@@ -513,13 +520,11 @@ final class LifecycleTest extends FunctionalTestCase
     {
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => '10', 'cleanupGracePeriod' => '90'];
         $record = $this->createRedirect(['source_host' => 'example.test']);
-        $GLOBALS['SIM_ACCESS_TIME'] = (new \DateTimeImmutable('2026-01-01 UTC'))->getTimestamp();
         $service = $this->get(RedirectService::class);
         self::assertNotNull($service->matchRedirect('example.test', '/old'));
         $this->commandRedirect($record, 'delete');
         self::assertNull($service->matchRedirect('example.test', '/old'));
-        $this->get(Context::class)->setAspect('date', new DateTimeAspect(new \DateTimeImmutable('2026-04-11 UTC')));
-        $GLOBALS['SIM_ACCESS_TIME'] = (new \DateTimeImmutable('2026-04-11 UTC'))->getTimestamp();
+        $this->setTime('2026-04-11 UTC');
         $restored = $this->commandRedirect($record, 'undelete');
         $matched = $service->matchRedirect('example.test', '/old');
         self::assertNotNull($matched);
