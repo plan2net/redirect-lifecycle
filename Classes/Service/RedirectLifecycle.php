@@ -301,6 +301,41 @@ final class RedirectLifecycle
         return $query;
     }
 
+    /**
+     * Select all existing redirects when no UIDs are given, including ineligible records for preview.
+     *
+     * @param list<int> $uids
+     * @return list<array{uid: int, source_host: string, source_path: string, reason: string}> Preview rows, including missing UIDs.
+     */
+    public function actionCandidates(array $uids, bool $adopt): array
+    {
+        $uids = array_values(array_unique($uids));
+        $query = $this->connectionPool->getQueryBuilderForTable('sys_redirect');
+        $query->getRestrictions()->removeAll();
+        $query->select(
+            'uid', 'source_host', 'source_path', 'tx_redirectlifecycle_mode',
+            'deleted', 'protected', 'disabled', 'starttime', 'endtime',
+        )->from('sys_redirect')->orderBy('uid');
+        if (isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
+            $query->addSelect('redirect_type');
+        }
+        if ($uids !== []) {
+            $query->where($query->expr()->in('uid', $query->createNamedParameter($uids, Connection::PARAM_INT_ARRAY)));
+        }
+        // ponytail: preview buffers records; paginate if large installations exceed CLI memory.
+        $records = array_column($query->executeQuery()->fetchAllAssociative(), null, 'uid');
+        foreach (array_diff($uids, array_keys($records)) as $uid) {
+            $records[$uid] = ['uid' => $uid, 'source_host' => '', 'source_path' => ''];
+        }
+        return array_map(
+            fn(array $record): array => [
+                'uid' => (int)$record['uid'], 'source_host' => $record['source_host'], 'source_path' => $record['source_path'],
+                'reason' => $this->actionReason($record, $adopt),
+            ],
+            array_values($records),
+        );
+    }
+
     public function actionReason(array $record, bool $adopt): string
     {
         if (!isset($record['tx_redirectlifecycle_mode'])) {

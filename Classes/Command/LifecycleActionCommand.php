@@ -12,8 +12,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use TYPO3\CMS\Core\Authentication\CommandLineUserAuthentication;
-use TYPO3\CMS\Core\Database\Connection;
-use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Localization\LanguageService;
 use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -26,7 +24,6 @@ final class LifecycleActionCommand extends Command
 
     public function __construct(
         private readonly bool $adopt,
-        private readonly ConnectionPool $connectionPool,
         private readonly RedirectLifecycle $lifecycle,
         LanguageServiceFactory $languageServiceFactory,
     ) {
@@ -52,28 +49,11 @@ final class LifecycleActionCommand extends Command
             }
             $uids[] = (int)$uid;
         }
-        $uids = array_values(array_unique($uids));
-        $query = $this->connectionPool->getQueryBuilderForTable('sys_redirect');
-        $query->getRestrictions()->removeAll();
-        $query->select(
-            'uid', 'source_host', 'source_path', 'tx_redirectlifecycle_mode',
-            'deleted', 'protected', 'disabled', 'starttime', 'endtime',
-        )->from('sys_redirect')->orderBy('uid');
-        if (isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
-            $query->addSelect('redirect_type');
-        }
-        if ($uids !== []) {
-            $query->where($query->expr()->in('uid', $query->createNamedParameter($uids, Connection::PARAM_INT_ARRAY)));
-        }
-        // ponytail: preview buffers records; paginate if large installations exceed CLI memory.
-        $records = array_column($query->executeQuery()->fetchAllAssociative(), null, 'uid');
-        foreach (array_diff($uids, array_keys($records)) as $uid) {
-            $records[$uid] = ['uid' => $uid, 'source_host' => '', 'source_path' => ''];
-        }
+        $records = $this->lifecycle->actionCandidates($uids, $this->adopt);
         $io = new SymfonyStyle($input, $output);
         $io->table(['UID', $this->label('host'), $this->label('path'), $this->label('status')], array_map(
-            fn(array $record): array => [$record['uid'], $record['source_host'], $record['source_path'], $this->label($this->lifecycle->actionReason($record, $this->adopt))],
-            array_values($records),
+            fn(array $record): array => [$record['uid'], $record['source_host'], $record['source_path'], $this->label($record['reason'])],
+            $records,
         ));
         if (!$input->getOption('execute')) {
             $io->note($this->label('preview'));
