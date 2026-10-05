@@ -11,6 +11,7 @@ use TYPO3\CMS\Backend\Routing\UriBuilder;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Page\JavaScriptModuleInstruction;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Utility\MathUtility;
 use TYPO3\CMS\Core\Utility\StringUtility;
 
 final class RenewLifetime extends AbstractNode
@@ -26,7 +27,9 @@ final class RenewLifetime extends AbstractNode
     public function render(): array
     {
         $uid = $this->data['databaseRow']['uid'] ?? 0;
-        if ($this->data['tableName'] !== 'sys_redirect' || $this->data['command'] !== 'edit' || !is_numeric($uid) || (int)$uid <= 0) {
+        if ($this->data['tableName'] !== 'sys_redirect' || $this->data['command'] !== 'edit'
+            || (!is_int($uid) && !is_string($uid)) || !MathUtility::canBeInterpretedAsInteger($uid) || (int)$uid <= 0
+        ) {
             return [];
         }
         $record = BackendUtility::getRecord('sys_redirect', (int)$uid);

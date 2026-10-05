@@ -15,6 +15,7 @@ use TYPO3\CMS\Core\Exception\SiteNotFoundException;
 use TYPO3\CMS\Core\Site\Entity\Site;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Utility\MathUtility;
 
 final class RedirectLifecycle
 {
@@ -459,8 +460,8 @@ final class RedirectLifecycle
 
     private function nonNegativeInteger(mixed $value, string $setting): int
     {
-        if ((!is_int($value) && (!is_string($value) || !preg_match('/^(0|[1-9][0-9]*)$/D', $value)))
-            || filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]) === false
+        if ((!is_int($value) && !is_string($value))
+            || !MathUtility::canBeInterpretedAsInteger($value) || (int)$value < 0
         ) {
             throw new \InvalidArgumentException($setting . ' must be a non-negative integer number of days.', self::INVALID_PERIOD_VALUE);
         }

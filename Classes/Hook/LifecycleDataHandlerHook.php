@@ -7,6 +7,7 @@ namespace Plan2net\RedirectLifecycle\Hook;
 use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Redirects\Hooks\DataHandlerCacheFlushingHook;
 use TYPO3\CMS\Redirects\Service\SlugService;
 
@@ -63,7 +64,7 @@ final class LifecycleDataHandlerHook
         ) {
             return;
         }
-        (new DataHandlerCacheFlushingHook())->rebuildRedirectCacheIfNecessary($parameters, $dataHandler);
+        GeneralUtility::makeInstance(DataHandlerCacheFlushingHook::class)->rebuildRedirectCacheIfNecessary($parameters, $dataHandler);
     }
 
     public function processCmdmap(

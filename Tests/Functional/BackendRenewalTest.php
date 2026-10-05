@@ -283,6 +283,12 @@ final class BackendRenewalTest extends FunctionalTestCase
         self::assertStringContainsString('uid=100', $button['linkAttributes']['href']);
         self::assertSame('Reset lifetime', $button['linkAttributes']['aria-label']);
         self::assertSame([], $this->button('new'));
+        foreach (['100.5', '1e2', 'NEW100'] as $uid) {
+            self::assertSame([], GeneralUtility::makeInstance(NodeFactory::class)->create([
+                'renderType' => 'redirectLifecycleRenew', 'tableName' => 'sys_redirect', 'command' => 'edit',
+                'databaseRow' => array_replace($this->record(), ['uid' => $uid]), 'returnUrl' => '',
+            ])->render());
+        }
     }
 
     private function button(string $command = 'edit'): array
