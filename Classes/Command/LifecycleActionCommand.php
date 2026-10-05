@@ -85,15 +85,17 @@ final class LifecycleActionCommand extends Command
         }
         $GLOBALS['LANG'] ??= $this->languageService;
         $applied = 0;
-        foreach ($records as $candidate) {
-            $uid = (int)$candidate['uid'];
-            $reason = $this->adopt ? $this->lifecycle->adopt($uid) : $this->lifecycle->renew($uid);
-            if ($reason !== null) {
-                $io->note(sprintf($this->label('skipped'), $uid, $this->label($reason)));
-                continue;
+        $this->lifecycle->batch(function () use ($records, $io, &$applied): void {
+            foreach ($records as $candidate) {
+                $uid = (int)$candidate['uid'];
+                $reason = $this->adopt ? $this->lifecycle->adopt($uid) : $this->lifecycle->renew($uid);
+                if ($reason !== null) {
+                    $io->note(sprintf($this->label('skipped'), $uid, $this->label($reason)));
+                    continue;
+                }
+                ++$applied;
             }
-            ++$applied;
-        }
+        });
         $io->success(sprintf($this->label('applied'), $applied));
         return Command::SUCCESS;
     }

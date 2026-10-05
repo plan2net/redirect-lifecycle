@@ -16,7 +16,6 @@ use TYPO3\CMS\Core\Exception\SiteNotFoundException;
 use TYPO3\CMS\Core\Site\Entity\Site;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Redirects\Service\RedirectCacheService;
 
 final class RedirectLifecycle
 {
@@ -46,6 +45,12 @@ final class RedirectLifecycle
     private const COMMITTED_CACHE_FAILURE = 1791100801;
 
     private bool $restoring = false;
+
+    /** @var array<int, int> Active lifecycle writes, including nested writes of the same record. */
+    private array $writesInProgress = [];
+
+    /** @var array<string, int>|null Hosts to publish, with a redirect UID for error reporting. */
+    private ?array $pendingCaches = null;
 
     /** @var \WeakMap<DataHandler, array<int, true>> */
     private \WeakMap $restoredRecords;
@@ -140,8 +145,6 @@ final class RedirectLifecycle
                     ])), ['uid' => $uid]);
                 }
                 $record = $restored ?: $record;
-                // Nested DataHandler defers its native cache queue until the outer command finishes.
-                $this->redirectCacheService->rebuildForHost($record['source_host']);
                 return null;
             }, $record);
         } catch (\RuntimeException $exception) {
@@ -156,6 +159,40 @@ final class RedirectLifecycle
     public function restoreCacheHandled(DataHandler $dataHandler, int $uid): bool
     {
         return isset($this->restoredRecords[$dataHandler][$uid]);
+    }
+
+    public function handlesWriteCache(int $uid): bool
+    {
+        return isset($this->writesInProgress[$uid]);
+    }
+
+    /** Invalidate each committed change immediately, then publish each host once, including after failure. */
+    public function batch(\Closure $operation): void
+    {
+        if ($this->pendingCaches !== null) {
+            $operation();
+            return;
+        }
+        $this->pendingCaches = [];
+        $failure = null;
+        try {
+            $operation();
+        } catch (\Throwable $exception) {
+            $failure = $exception;
+        }
+        $hosts = $this->pendingCaches;
+        $this->pendingCaches = null;
+        foreach ($hosts as $host => $uid) {
+            try {
+                $this->redirectCacheService->rebuildForHost((string)$host);
+            } catch (\Throwable $exception) {
+                $this->logCacheFailure($uid, $exception);
+                $failure ??= $this->committedCacheFailure($uid, $exception);
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
     }
 
     /** Null means applied; a reason means skipped after checking the locked record. */
@@ -241,6 +278,7 @@ final class RedirectLifecycle
         $record = $record ?: BackendUtility::getRecord('sys_redirect', $uid, '*', '', false) ?? [];
         $sourceHost = $record['source_host'] ?? '';
         $connection->beginTransaction();
+        $this->writesInProgress[$uid] = ($this->writesInProgress[$uid] ?? 0) + 1;
         try {
             // A no-op write locks the row on every supported database, including SQLite.
             $connection->update('sys_redirect', ['uid' => $uid], ['uid' => $uid]);
@@ -255,20 +293,38 @@ final class RedirectLifecycle
                 $this->logCacheFailure($uid, $cacheException, ['writeException' => $exception]);
             }
             throw $exception;
+        } finally {
+            if (--$this->writesInProgress[$uid] === 0) {
+                unset($this->writesInProgress[$uid]);
+            }
         }
         if ($reason === null) {
-            // DataHandler rebuilds inside the transaction; refresh again after committing.
             try {
-                $this->redirectCacheService->rebuildForHost($record['source_host'] ?? $sourceHost);
+                $this->refreshWriteCache($record['source_host'] ?? $sourceHost, $uid);
             } catch (\Throwable $exception) {
                 $this->logCacheFailure($uid, $exception);
-                throw new \RuntimeException(sprintf(
-                    $GLOBALS['LANG']->sL('LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:cache.committedFailure'),
-                    $uid,
-                ), self::COMMITTED_CACHE_FAILURE, $exception);
+                throw $this->committedCacheFailure($uid, $exception);
             }
         }
         return $reason;
+    }
+
+    private function refreshWriteCache(string $sourceHost, int $uid): void
+    {
+        if ($this->pendingCaches !== null) {
+            $sourceHost = $sourceHost === '' ? '*' : $sourceHost;
+            $this->pendingCaches[$sourceHost] = $uid;
+            $this->redirectCacheService->invalidateForHost($sourceHost);
+            return;
+        }
+        $this->redirectCacheService->rebuildForHost($sourceHost);
+    }
+
+    private function committedCacheFailure(int $uid, \Throwable $exception): \RuntimeException
+    {
+        return new \RuntimeException(sprintf(
+            $GLOBALS['LANG']->sL('LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:cache.committedFailure'), $uid,
+        ), self::COMMITTED_CACHE_FAILURE, $exception);
     }
 
     public function cleanupCandidates(int $now): array

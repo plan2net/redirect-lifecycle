@@ -45,6 +45,8 @@ final class CacheFailureTest extends FunctionalTestCase
     {
         FailingCacheBackend::$transactionFailure = FailingCacheBackend::$outsideFailure = null;
         FailingCacheBackend::$attempts = [];
+        FailingCacheBackend::$invalidationFailure = null;
+        FailingCacheBackend::$invalidations = [];
         parent::setUp();
         $this->importCSVDataSet(__DIR__ . '/Fixtures/Creation.csv');
         $user = $this->setUpBackendUser(1);
@@ -66,6 +68,8 @@ final class CacheFailureTest extends FunctionalTestCase
     {
         FailingCacheBackend::$transactionFailure = FailingCacheBackend::$outsideFailure = null;
         FailingCacheBackend::$attempts = [];
+        FailingCacheBackend::$invalidationFailure = null;
+        FailingCacheBackend::$invalidations = [];
         parent::tearDown();
     }
 
@@ -94,13 +98,111 @@ final class CacheFailureTest extends FunctionalTestCase
         }
         self::assertSame($history + ($action === 'renew' ? 0 : 1), $this->historyCount());
         self::assertCount(1, array_filter(FailingCacheBackend::$attempts, static fn(int $level): bool => $level === 0));
-        self::assertContains(1, FailingCacheBackend::$attempts, 'Exercise native in-transaction cache publication too.');
+        self::assertSame([0], FailingCacheBackend::$attempts, 'Never publish uncommitted records.');
         $this->assertCacheError($failure);
     }
 
     public static function cliActions(): array
     {
         return [['adopt'], ['renew'], ['cleanup']];
+    }
+
+    #[DataProvider('cliActions')]
+    public function testBulkActionPublishesEachHostOnceAfterAllChanges(string $action): void
+    {
+        $this->prepare($action);
+        $connection = $this->getConnectionPool()->getConnectionForTable('sys_redirect');
+        foreach ([101 => '', 102 => 'other.test'] as $uid => $host) {
+            $connection->insert('sys_redirect', array_replace($this->record(), [
+                'uid' => $uid, 'source_host' => $host, 'source_path' => '/record-' . $uid,
+            ]));
+        }
+        $cache = $this->get(RedirectCacheService::class);
+        $cache->rebuildForHost('*');
+        $cache->rebuildForHost('other.test');
+        FailingCacheBackend::$attempts = [];
+        FailingCacheBackend::$invalidations = [];
+        self::assertSame(0, $this->command($action)->execute($action === 'cleanup' ? [] : [
+            'uids' => ['100', '101', '102'], '--execute' => true,
+        ]));
+        self::assertSame([0, 0], FailingCacheBackend::$attempts);
+        self::assertSame([
+            'redirects_' . sha1('*'), 'redirects_' . sha1('*'), 'redirects_' . sha1('other.test'),
+        ], FailingCacheBackend::$invalidations);
+        foreach ([100 => '*', 101 => '*', 102 => 'other.test'] as $uid => $host) {
+            $record = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false);
+            $cached = $cache->getRedirects($host)['flat'][rtrim($record['source_path'], '/') . '/'][$uid] ?? null;
+            if ($action === 'cleanup') {
+                self::assertSame(1, (int)$record['deleted']);
+                self::assertNull($cached);
+            } else {
+                self::assertSame($this->timestamp('2026-01-15'), (int)$record['endtime']);
+                self::assertSame((int)$record['endtime'], (int)$cached['endtime']);
+            }
+        }
+    }
+
+    public function testFailedInvalidationStopsTheBatchAndRepairsTheCommittedHost(): void
+    {
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->insert('sys_redirect',
+            array_replace($this->record(), ['uid' => 101, 'source_path' => '/second']));
+        $failure = FailingCacheBackend::$invalidationFailure = new \RuntimeException('Invalidation unavailable.');
+        FailingCacheBackend::$attempts = [];
+        try {
+            $this->command('adopt')->execute(['uids' => ['100', '101'], '--execute' => true]);
+            self::fail('Failed invalidation must stop further writes.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame(1791100801, $exception->getCode());
+            self::assertSame($failure, $exception->getPrevious());
+        }
+        self::assertSame([0], FailingCacheBackend::$attempts);
+        $cached = $this->get(RedirectCacheService::class)->getRedirects('*')['flat'];
+        self::assertSame(1, (int)$cached['/legacy/'][100]['tx_redirectlifecycle_mode']);
+        self::assertSame(0, (int)$cached['/second/'][101]['tx_redirectlifecycle_mode']);
+        $this->assertCacheError($failure);
+    }
+
+    public function testNativeFailureMidBatchKeepsEarlierChangesAndPublishesTheirCache(): void
+    {
+        $connection = $this->getConnectionPool()->getConnectionForTable('sys_redirect');
+        $connection->insert('sys_redirect', array_replace($this->record(), [
+            'uid' => 101, 'source_host' => 'other.test', 'source_path' => '/second',
+        ]));
+        $cache = $this->get(RedirectCacheService::class);
+        $cache->rebuildForHost('*');
+        $cache->rebuildForHost('other.test');
+        $connection->executeStatement("CREATE TRIGGER fail_second BEFORE UPDATE ON sys_redirect WHEN NEW.uid=101 AND NEW.tx_redirectlifecycle_mode=1 BEGIN SELECT RAISE(ABORT, 'Second mutation failed.'); END");
+        try {
+            $this->command('adopt')->execute(['uids' => ['100', '101'], '--execute' => true]);
+            self::fail('The second mutation must fail.');
+        } catch (\Throwable $exception) {
+            self::assertStringContainsString('Second mutation failed.', $exception->getMessage());
+        }
+        self::assertSame(1, (int)$cache->getRedirects('*')['flat']['/legacy/'][100]['tx_redirectlifecycle_mode']);
+        self::assertSame(0, (int)$cache->getRedirects('other.test')['flat']['/second/'][101]['tx_redirectlifecycle_mode']);
+        self::assertSame(1, $this->historyCount());
+    }
+
+    public function testPublicationFailureStillAttemptsEveryChangedHost(): void
+    {
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->insert('sys_redirect',
+            array_replace($this->record(), ['uid' => 101, 'source_host' => 'other.test', 'source_path' => '/second']));
+        FailingCacheBackend::$outsideFailure = new \RuntimeException('Publication unavailable.');
+        FailingCacheBackend::$attempts = [];
+        try {
+            $this->command('adopt')->execute(['uids' => ['100', '101'], '--execute' => true]);
+            self::fail('The committed publication failure must be reported.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame(1791100801, $exception->getCode());
+        }
+        self::assertSame([0, 0], FailingCacheBackend::$attempts);
+        self::assertCount(2, $this->logs);
+        FailingCacheBackend::$outsideFailure = null;
+        self::assertSame(1, (int)$this->get(RedirectCacheService::class)->getRedirects('other.test')['flat']['/second/'][101]['tx_redirectlifecycle_mode']);
+        // A later command must start with an empty batch, including after a failed publication.
+        FailingCacheBackend::$attempts = [];
+        self::assertSame(0, $this->command('adopt')->execute(['uids' => ['100', '101'], '--execute' => true]));
+        self::assertSame([], FailingCacheBackend::$attempts);
     }
 
     public function testRestoreCacheFailureUsesNativeErrorLogAndKeepsSingleRestoration(): void
@@ -132,7 +234,14 @@ final class CacheFailureTest extends FunctionalTestCase
         $this->prepare($action);
         $before = $this->record();
         $history = $this->historyCount();
-        $original = FailingCacheBackend::$transactionFailure = new \RuntimeException('Native write cache failed.');
+        $condition = match ($action) {
+            'adopt' => 'NEW.tx_redirectlifecycle_mode != OLD.tx_redirectlifecycle_mode',
+            'renew' => 'NEW.endtime != OLD.endtime',
+            default => 'NEW.deleted != OLD.deleted',
+        };
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->executeStatement(
+            "CREATE TRIGGER fail_mutation BEFORE UPDATE ON sys_redirect WHEN $condition BEGIN SELECT RAISE(ABORT, 'Native mutation failed.'); END",
+        );
         $repair = FailingCacheBackend::$outsideFailure = new \RuntimeException('Rollback cache repair failed.');
         try {
             if ($action === 'restore') {
@@ -141,8 +250,9 @@ final class CacheFailureTest extends FunctionalTestCase
                 $this->command($action)->execute($action === 'cleanup' ? [] : ['uids' => ['100'], '--execute' => true]);
             }
             self::fail('The original mutation exception must propagate.');
-        } catch (\RuntimeException $exception) {
-            self::assertSame($original, $exception);
+        } catch (\Throwable $exception) {
+            self::assertStringContainsString('Native mutation failed.', $exception->getMessage());
+            $original = $exception;
         }
         self::assertSame($before, $this->record());
         self::assertSame($history, $this->historyCount());

@@ -59,9 +59,10 @@ final class LifecycleDataHandlerHook
     public function rebuildRedirectCacheIfNecessary(array $parameters, DataHandler $dataHandler): void
     {
         if (($parameters['table'] ?? '') === 'sys_redirect'
-            && $this->lifecycle->restoreCacheHandled($dataHandler, (int)($parameters['uid'] ?? 0))
+            && ($this->lifecycle->handlesWriteCache((int)($parameters['uid'] ?? 0))
+                || $this->lifecycle->restoreCacheHandled($dataHandler, (int)($parameters['uid'] ?? 0)))
         ) {
-            // Restore already published the cache or reported its committed publication failure.
+            // Lifecycle writes publish only after commit; completed restores already handled the cache.
             return;
         }
         (new DataHandlerCacheFlushingHook())->rebuildRedirectCacheIfNecessary($parameters, $dataHandler);

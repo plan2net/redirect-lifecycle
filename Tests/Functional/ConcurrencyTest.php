@@ -117,6 +117,50 @@ final class ConcurrencyTest extends FunctionalTestCase
         $this->assertCurrentCache($uid, $record);
     }
 
+    public function testConcurrentHitUsesCommittedDatesBeforeTheBatchFinishes(): void
+    {
+        $uid = $this->createRedirect();
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['redirectTTL'] = '20';
+        $barrier = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        self::assertNotFalse($barrier);
+        foreach ($barrier as $socket) {
+            stream_set_timeout($socket, 10);
+        }
+        try {
+            $this->parallel(2, function (int $worker) use ($uid, $barrier): void {
+                if ($worker === 0) {
+                    $this->get(RedirectLifecycle::class)->batch(function () use ($uid, $barrier): void {
+                        self::assertNull($this->get(RedirectLifecycle::class)->renew($uid));
+                        self::assertFalse($this->get(CacheManager::class)->getCache('pages')->has('redirects_' . sha1('parallel.test')));
+                        fwrite($barrier[0], "committed\n");
+                        self::assertSame("redirected\n", fgets($barrier[0]));
+                    });
+                    return;
+                }
+                self::assertSame("committed\n", fgets($barrier[1]));
+                $cached = $this->get(RedirectCacheService::class)->getRedirects('parallel.test')['flat']['/old/'][$uid];
+                self::assertSame((new \DateTimeImmutable('2026-01-21 UTC'))->getTimestamp(), (int)$cached['endtime']);
+                $response = $this->get(RedirectHandler::class)->process(
+                    new ServerRequest('https://parallel.test/old', 'GET'),
+                    new class implements RequestHandlerInterface {
+                        public function handle(ServerRequestInterface $request): ResponseInterface
+                        {
+                            return new HtmlResponse('', 404);
+                        }
+                    },
+                );
+                self::assertSame(307, $response->getStatusCode());
+                fwrite($barrier[1], "redirected\n");
+            });
+        } finally {
+            fclose($barrier[0]);
+            fclose($barrier[1]);
+        }
+        $record = BackendUtility::getRecord('sys_redirect', $uid);
+        self::assertSame((new \DateTimeImmutable('2026-06-30 UTC'))->getTimestamp(), (int)$record['endtime']);
+        $this->assertCurrentCache($uid, $record);
+    }
+
     public function testOverlappingCleanupRunsDeleteOnlyOnce(): void
     {
         $uid = $this->createRedirect();

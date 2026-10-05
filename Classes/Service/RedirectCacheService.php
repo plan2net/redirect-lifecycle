@@ -22,6 +22,17 @@ final class RedirectCacheService extends CoreRedirectCacheService
         if (GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('sys_redirect')->getTransactionNestingLevel() > 0) {
             return parent::rebuildForHost($sourceHost);
         }
+        return $this->withHostLock($sourceHost, fn(): array => parent::rebuildForHost($sourceHost));
+    }
+
+    public function invalidateForHost(string $sourceHost): void
+    {
+        $sourceHost = $sourceHost === '' ? '*' : $sourceHost;
+        $this->withHostLock($sourceHost, fn() => $this->cache->remove('redirects_' . sha1($sourceHost)));
+    }
+
+    private function withHostLock(string $sourceHost, \Closure $operation): mixed
+    {
         // Serialize Core callers too, including cache misses and ordinary backend changes.
         // ponytail: Core locks coordinate one server; clustered deployments need a shared locking strategy.
         $lock = GeneralUtility::makeInstance(LockFactory::class)->createLocker('redirect-lifecycle-cache-' . sha1($sourceHost));
@@ -29,7 +40,7 @@ final class RedirectCacheService extends CoreRedirectCacheService
             throw new \RuntimeException('Unable to lock the redirect cache.', self::CACHE_LOCK_FAILED);
         }
         try {
-            return parent::rebuildForHost($sourceHost);
+            return $operation();
         } finally {
             $lock->release();
         }

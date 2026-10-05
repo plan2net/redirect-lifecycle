@@ -59,11 +59,13 @@ final class CleanupCommand extends Command
         }
         $GLOBALS['LANG'] ??= $this->languageService;
         $deleted = 0;
-        foreach ($records as $candidate) {
-            if ($this->lifecycle->cleanup((int)$candidate['uid'], $now) === null) {
-                ++$deleted;
+        $this->lifecycle->batch(function () use ($records, $now, &$deleted): void {
+            foreach ($records as $candidate) {
+                if ($this->lifecycle->cleanup((int)$candidate['uid'], $now) === null) {
+                    ++$deleted;
+                }
             }
-        }
+        });
         $io->success(sprintf($this->label('deleted'), $deleted));
         return Command::SUCCESS;
     }
