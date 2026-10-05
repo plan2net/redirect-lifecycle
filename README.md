@@ -8,14 +8,8 @@ Supports TYPO3 **12.4, 13.4, and 14**. Requires PHP **8.1+**, EXT:redirects,
 and EXT:scheduler. This extension is currently a development alpha.
 
 ## Installation
-
-Until a release is available, install the development branch from its Git repository:
-
-```sh
-composer config repositories.redirect-lifecycle vcs https://github.com/thegass/redirect-lifecycle.git
+```
 composer require plan2net/redirect-lifecycle:dev-main
-vendor/bin/typo3 extension:setup
-vendor/bin/typo3 cache:flush
 ```
 
 Existing redirects keep their current behavior. Installation does not enroll them
