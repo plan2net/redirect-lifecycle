@@ -150,14 +150,10 @@ final class RedirectLifecycle
         $this->restoredRecords[$dataHandler] = ($this->restoredRecords[$dataHandler] ?? []) + [$uid => true];
     }
 
-    public function restoreCacheHandled(DataHandler $dataHandler, int $uid): bool
+    /** Lifecycle writes publish after commit; completed restorations already handled publication. */
+    public function handlesCachePublication(DataHandler $dataHandler, int $uid): bool
     {
-        return isset($this->restoredRecords[$dataHandler][$uid]);
-    }
-
-    public function handlesWriteCache(int $uid): bool
-    {
-        return isset($this->writesInProgress[$uid]);
+        return isset($this->writesInProgress[$uid]) || isset($this->restoredRecords[$dataHandler][$uid]);
     }
 
     /** Invalidate each committed change immediately, then publish each host once, including after failure. */
