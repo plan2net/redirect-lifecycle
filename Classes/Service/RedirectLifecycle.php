@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Plan2net\RedirectLifecycle\Service;
 
-use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Context\Context;
@@ -42,15 +41,11 @@ final class RedirectLifecycle
     private const LIFETIME_FIELD_PERMISSION_DENIED = 1791014404;
     private const LIFETIME_RESTART_FAILED = 1791014405;
     private const INVALID_RENEWAL_LIFETIME = 1791100802;
-    private const COMMITTED_CACHE_FAILURE = 1791100801;
 
     private bool $restoring = false;
 
     /** @var array<int, int> Active lifecycle writes, including nested writes of the same record. */
     private array $writesInProgress = [];
-
-    /** @var array<string, int>|null Hosts to publish, with a redirect UID for error reporting. */
-    private ?array $pendingCaches = null;
 
     /** @var \WeakMap<DataHandler, array<int, true>> */
     private \WeakMap $restoredRecords;
@@ -61,7 +56,6 @@ final class RedirectLifecycle
         private readonly ExtensionConfiguration $extensionConfiguration,
         private readonly ConnectionPool $connectionPool,
         private readonly RedirectCacheService $redirectCacheService,
-        private readonly LoggerInterface $logger,
     ) {
         $this->restoredRecords = new \WeakMap();
     }
@@ -148,7 +142,7 @@ final class RedirectLifecycle
                 return null;
             }, $record);
         } catch (\RuntimeException $exception) {
-            if ($exception->getCode() !== self::COMMITTED_CACHE_FAILURE) {
+            if ($exception->getCode() !== RedirectCacheService::COMMITTED_CACHE_FAILURE) {
                 throw $exception;
             }
             $dataHandler->errorLog[] = $exception->getMessage();
@@ -169,30 +163,7 @@ final class RedirectLifecycle
     /** Invalidate each committed change immediately, then publish each host once, including after failure. */
     public function batch(\Closure $operation): void
     {
-        if ($this->pendingCaches !== null) {
-            $operation();
-            return;
-        }
-        $this->pendingCaches = [];
-        $failure = null;
-        try {
-            $operation();
-        } catch (\Throwable $exception) {
-            $failure = $exception;
-        }
-        $hosts = $this->pendingCaches;
-        $this->pendingCaches = null;
-        foreach ($hosts as $host => $uid) {
-            try {
-                $this->redirectCacheService->rebuildForHost((string)$host);
-            } catch (\Throwable $exception) {
-                $this->logCacheFailure($uid, $exception);
-                $failure ??= $this->committedCacheFailure($uid, $exception);
-            }
-        }
-        if ($failure !== null) {
-            throw $failure;
-        }
+        $this->redirectCacheService->batch($operation);
     }
 
     /** Null means applied; a reason means skipped after checking the locked record. */
@@ -287,11 +258,7 @@ final class RedirectLifecycle
             $connection->commit();
         } catch (\Throwable $exception) {
             $connection->rollBack();
-            try {
-                $this->redirectCacheService->rebuildForHost($record['source_host'] ?? $sourceHost);
-            } catch (\Throwable $cacheException) {
-                $this->logCacheFailure($uid, $cacheException, ['writeException' => $exception]);
-            }
+            $this->redirectCacheService->repairAfterRollback($record['source_host'] ?? $sourceHost, $uid, $exception);
             throw $exception;
         } finally {
             if (--$this->writesInProgress[$uid] === 0) {
@@ -299,32 +266,9 @@ final class RedirectLifecycle
             }
         }
         if ($reason === null) {
-            try {
-                $this->refreshWriteCache($record['source_host'] ?? $sourceHost, $uid);
-            } catch (\Throwable $exception) {
-                $this->logCacheFailure($uid, $exception);
-                throw $this->committedCacheFailure($uid, $exception);
-            }
+            $this->redirectCacheService->refreshAfterCommit($record['source_host'] ?? $sourceHost, $uid);
         }
         return $reason;
-    }
-
-    private function refreshWriteCache(string $sourceHost, int $uid): void
-    {
-        if ($this->pendingCaches !== null) {
-            $sourceHost = $sourceHost === '' ? '*' : $sourceHost;
-            $this->pendingCaches[$sourceHost] = $uid;
-            $this->redirectCacheService->invalidateForHost($sourceHost);
-            return;
-        }
-        $this->redirectCacheService->rebuildForHost($sourceHost);
-    }
-
-    private function committedCacheFailure(int $uid, \Throwable $exception): \RuntimeException
-    {
-        return new \RuntimeException(sprintf(
-            $GLOBALS['LANG']->sL('LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:cache.committedFailure'), $uid,
-        ), self::COMMITTED_CACHE_FAILURE, $exception);
     }
 
     public function cleanupCandidates(int $now): array
@@ -445,22 +389,8 @@ final class RedirectLifecycle
             // Retry from fresh data if another request or backend change wins the update.
         } while ($connection->update('sys_redirect', $dates, $record) === 0);
 
-        try {
-            $this->redirectCacheService->rebuildForHost($record['source_host']);
-        } catch (\Throwable $exception) {
-            $this->logCacheFailure($uid, $exception);
-        }
+        $this->redirectCacheService->refreshAfterHit($record['source_host'], $uid);
         return $dates;
-    }
-
-    private function logCacheFailure(int $uid, \Throwable $exception, array $context = []): void
-    {
-        try {
-            $this->logger->error('Redirect cache rebuilding failed.', $context + ['uid' => $uid, 'exception' => $exception]);
-        } catch (\Throwable $loggingException) {
-            // A failing log writer must not replace the write error or interrupt a redirect.
-            error_log(sprintf('Redirect %d cache rebuilding failed: %s; logging failed: %s', $uid, $exception->getMessage(), $loggingException->getMessage()));
-        }
     }
 
     private function initialize(array $record, int $mode, ?Site $site): array

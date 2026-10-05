@@ -6,6 +6,7 @@ namespace Plan2net\RedirectLifecycle\Tests\Functional;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
+use Plan2net\RedirectLifecycle\Service\RedirectCacheService as LifecycleRedirectCacheService;
 use Plan2net\RedirectLifecycle\Tests\Functional\Fixtures\FailingCacheBackend;
 use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -61,7 +62,7 @@ final class CacheFailureTest extends FunctionalTestCase
                 return $this;
             }
         };
-        $this->get(LogManager::class)->getLogger(RedirectLifecycle::class)->addWriter(LogLevel::ERROR, $writer);
+        $this->get(LogManager::class)->getLogger(LifecycleRedirectCacheService::class)->addWriter(LogLevel::ERROR, $writer);
     }
 
     protected function tearDown(): void
@@ -302,7 +303,7 @@ final class CacheFailureTest extends FunctionalTestCase
     public function testFailingLogWriterCannotInterruptHit(): void
     {
         $this->prepareHit();
-        $this->get(LogManager::class)->getLogger(RedirectLifecycle::class)->addWriter(LogLevel::ERROR, new class implements WriterInterface {
+        $this->get(LogManager::class)->getLogger(LifecycleRedirectCacheService::class)->addWriter(LogLevel::ERROR, new class implements WriterInterface {
             public function writeLog(LogRecord $record): WriterInterface
             {
                 throw new \RuntimeException('Log writer unavailable.');

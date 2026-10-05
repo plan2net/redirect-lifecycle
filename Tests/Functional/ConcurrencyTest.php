@@ -10,7 +10,6 @@ use Psr\Http\Server\RequestHandlerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
-use Psr\Log\NullLogger;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -102,7 +101,7 @@ final class ConcurrencyTest extends FunctionalTestCase
                 });
                 $lifecycle = new RedirectLifecycle(
                     $this->get(Context::class), $this->get(SiteFinder::class), $configuration,
-                    $this->get(ConnectionPool::class), $this->get(RedirectCacheService::class), new NullLogger(),
+                    $this->get(ConnectionPool::class), $this->get(RedirectCacheService::class),
                 );
                 self::assertNull($lifecycle->extendOnHit($uid));
                 self::assertTrue($paused);
