@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs live in GitHub Issues for `thegass/redirect-lifecycle`.
+Issues and specs live in GitHub Issues for `plan2net/redirect-lifecycle`.
 Use the `gh` CLI from this clone.
 
 ## Conventions

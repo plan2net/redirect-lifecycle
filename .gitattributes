@@ -4,6 +4,7 @@
 /GLOSSARY.md export-ignore
 /Tests export-ignore
 /dev export-ignore
+/ext_emconf.php export-ignore
 /Documentation/adr export-ignore
 /Documentation/agents export-ignore
 /Documentation/development.md export-ignore
