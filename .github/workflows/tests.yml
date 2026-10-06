@@ -1,0 +1,57 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  functional:
+    name: TYPO3 ${{ matrix.typo3 }} / PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - typo3: '12'
+            php: '8.2'
+          - typo3: '13'
+            php: '8.3'
+          - typo3: '14'
+            php: '8.4'
+    defaults:
+      run:
+        working-directory: dev/typo3-v${{ matrix.typo3 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: intl, mbstring, pdo_sqlite, sqlite3, pcntl, gd, zip
+          tools: composer:v2
+          coverage: none
+
+      # The development Composer projects reference this shared source path.
+      - name: Link extension source
+        run: sudo ln -s "$GITHUB_WORKSPACE" /opt/redirect-lifecycle
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run functional tests
+        run: composer test:functional -- --log-junit results.xml
+
+      - name: Upload test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tests-typo3-${{ matrix.typo3 }}-php-${{ matrix.php }}
+          path: dev/typo3-v${{ matrix.typo3 }}/results.xml
+          retention-days: 14

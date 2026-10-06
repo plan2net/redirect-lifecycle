@@ -55,6 +55,11 @@ TYPO3 versions; cases specific to TYPO3 14 are skipped on 12 and 13.
 Concurrency tests use real processes and a shared SQLite cache; they do not
 verify production database isolation or distributed locking.
 
+GitHub Actions runs the same three version combinations on pushes, pull requests,
+and manual workflow runs. It installs the locked dependencies and runs the same
+`test:functional` scripts, including the TYPO3 14 Sluggi baseline, with disposable
+SQLite databases. JUnit results are available as workflow artifacts for 14 days.
+
 ## Sluggi integration
 
 All three setups install `wazum/sluggi`. Run its integration tests with:
