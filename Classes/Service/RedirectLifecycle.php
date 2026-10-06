@@ -443,7 +443,7 @@ final class RedirectLifecycle
             return $record;
         }
         $settings = $this->extensionConfiguration->get('redirect_lifecycle');
-        $ttl = $this->nonNegativeInteger($site?->getSettings()->get('redirects.redirectTTL', 0) ?? $settings['redirectTTL'], 'redirectTTL');
+        $ttl = $this->nonNegativeInteger($site?->getSettings()->get('redirects.redirectTTL') ?? $settings['redirectTTL'], 'redirectTTL');
         $grace = $this->nonNegativeInteger($settings['cleanupGracePeriod'], 'cleanupGracePeriod');
         $record['endtime'] = $ttl > 0
             ? $this->context->getAspect('date')->getDateTime()->modify('+' . $ttl . ' days')->getTimestamp()

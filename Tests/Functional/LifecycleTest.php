@@ -65,6 +65,36 @@ final class LifecycleTest extends FunctionalTestCase
         self::assertSame(1806537600, (int)$record['tx_redirectlifecycle_delete_after']);
     }
 
+    #[DataProvider('unsetSiteTtls')]
+    public function testCreationWithUnsetSiteTtlUsesGlobalFallback(array $settings): void
+    {
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => '365', 'cleanupGracePeriod' => '90'];
+        $writer = class_exists(SiteWriter::class) ? $this->get(SiteWriter::class) : $this->get(SiteConfiguration::class);
+        $writer->write('main', [
+            'rootPageId' => 1,
+            'base' => 'https://example.test/',
+            'languages' => [[
+                'languageId' => 0, 'title' => 'English', 'enabled' => true,
+                'base' => '/', 'locale' => 'en_US.UTF-8', 'iso-639-1' => 'en',
+            ]],
+            'settings' => $settings,
+        ]);
+        $this->get(SiteFinder::class)->getAllSites(false);
+        $record = $this->createRedirect(['pid' => 4]);
+
+        self::assertSame(1, (int)$record['tx_redirectlifecycle_mode']);
+        self::assertSame(1798761600, (int)$record['endtime']);
+        self::assertSame(1806537600, (int)$record['tx_redirectlifecycle_delete_after']);
+    }
+
+    public static function unsetSiteTtls(): array
+    {
+        return [
+            'missing TTL' => [[]],
+            'null TTL' => [['redirects' => ['redirectTTL' => null]]],
+        ];
+    }
+
     #[DataProvider('siteAssignments')]
     public function testSiteAssignmentPrecedence(array $fields, string $otherBase, int $expectedExpiry): void
     {

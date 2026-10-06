@@ -56,8 +56,8 @@
             <trans-unit id="mode.fixed" resname="mode.fixed"><source>Fixed expiry time</source><target>Festes Ablaufdatum</target></trans-unit>
             <trans-unit id="deleteAfter" resname="deleteAfter"><source>Earliest automatic deletion</source><target>Frühester Zeitpunkt für automatische Löschung</target></trans-unit>
             <trans-unit id="settings.redirectTTL" resname="settings.redirectTTL">
-                <source>Global initial lifetime in days: Used only when no unambiguous site is found. Zero means unlimited validity.</source>
-                <target>Globale initiale Laufzeit in Tagen: Wird nur ohne eindeutige Site-Zuordnung verwendet. Null bedeutet unbegrenzte Gültigkeit.</target>
+                <source>Global initial lifetime in days: Used when no unambiguous site is found or its TTL is unset. Zero means unlimited validity.</source>
+                <target>Globale initiale Laufzeit in Tagen: Wird ohne eindeutige Site-Zuordnung oder bei nicht gesetzter Site-TTL verwendet. Der Wert 0 bedeutet unbegrenzte Gültigkeit.</target>
             </trans-unit>
             <trans-unit id="settings.cleanupGracePeriod" resname="settings.cleanupGracePeriod">
                 <source>Cleanup grace period in days: Fixed days after expiry before automatic deletion may occur.</source>

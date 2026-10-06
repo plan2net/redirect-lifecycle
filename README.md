@@ -26,7 +26,8 @@ redirects:
 
 The site's `redirectTTL` determines the lifetime of new managed redirects and
 explicit lifetime resets. **Zero means unlimited validity.** If a redirect cannot
-be assigned to one site, the extension's global `redirectTTL` is used instead.
+be assigned to one site, or its site TTL is missing or `null`, the extension's
+global `redirectTTL` is used instead. An explicit site TTL of `0` remains unlimited.
 
 In **Admin Tools → Settings → Extension Configuration → redirect_lifecycle**,
 configure the installation-wide settings:
@@ -37,7 +38,7 @@ The screenshot shows local example values; the defaults are listed below.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `redirectTTL` | `0` | Initial lifetime in days when no unambiguous site is found. |
+| `redirectTTL` | `0` | Initial lifetime in days when no unambiguous site is found or its TTL is missing or `null`. |
 | `minimumRemainingLifetime` | `90` | Renew on a valid hit only below this many remaining days. |
 | `renewalLifetime` | `180` | Remaining lifetime in days after hit renewal; must exceed the minimum. |
 | `cleanupGracePeriod` | `90` | Days after expiry before scheduled deletion is allowed. |
