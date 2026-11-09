@@ -181,6 +181,57 @@ final class ActionTest extends FunctionalTestCase
         ];
     }
 
+    #[DataProvider('adoptionExclusions')]
+    public function testSkippedAdoptionWorksWithoutDatabaseWriteAccess(array $fields, string $reason): void
+    {
+        if (isset($fields['redirect_type']) && !isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
+            self::markTestSkipped('Redirect types were introduced in TYPO3 14.');
+        }
+        $connection = $this->getConnectionPool()->getConnectionForTable('sys_redirect');
+        $connection->update('sys_redirect', $fields, ['uid' => 100]);
+        $before = $this->record(100);
+        $tester = $this->command('adopt');
+        $connection->executeStatement('PRAGMA query_only = ON');
+        try {
+            self::assertSame(0, $tester->execute(['uids' => ['100'], '--execute' => true]));
+            self::assertSame(0, $connection->getTransactionNestingLevel());
+        } finally {
+            $connection->executeStatement('PRAGMA query_only = OFF');
+        }
+        self::assertStringContainsString($reason, $tester->getDisplay());
+        self::assertSame($before, $this->record(100));
+    }
+
+    public function testAdoptionStillRechecksEligibilityAfterAcquiringTheLock(): void
+    {
+        $connection = $this->getConnectionPool()->getConnectionForTable('sys_redirect');
+        // Simulate protection being added between the fresh precheck and the locked read.
+        $connection->executeStatement('CREATE TEMP TRIGGER protect_on_lock AFTER UPDATE OF uid ON sys_redirect
+            WHEN NEW.uid = 100 BEGIN UPDATE sys_redirect SET protected = 1 WHERE uid = 100; END');
+        try {
+            $tester = $this->command('adopt');
+            self::assertSame(0, $tester->execute(['uids' => ['100'], '--execute' => true]));
+        } finally {
+            $connection->executeStatement('DROP TRIGGER protect_on_lock');
+        }
+        self::assertStringContainsString('Protected', $tester->getDisplay());
+        self::assertStringContainsString('0 redirects updated.', $tester->getDisplay());
+        self::assertSame(1, (int)$this->record(100)['protected']);
+        self::assertSame(0, (int)$this->record(100)['tx_redirectlifecycle_mode']);
+    }
+
+    public function testAdoptionReconsidersAnEarlierIneligiblePreview(): void
+    {
+        $connection = $this->getConnectionPool()->getConnectionForTable('sys_redirect');
+        $connection->update('sys_redirect', ['protected' => 1], ['uid' => 100]);
+        $lifecycle = $this->get(RedirectLifecycle::class);
+        self::assertSame('protected', $lifecycle->actionCandidates([100], true)[0]['reason']);
+        $connection->update('sys_redirect', ['protected' => 0], ['uid' => 100]);
+        self::assertNull($lifecycle->adopt(100));
+        self::assertSame(1, (int)$this->record(100)['tx_redirectlifecycle_mode']);
+        self::assertSame((new \DateTimeImmutable('2026-04-16 UTC'))->getTimestamp(), (int)$this->record(100)['endtime']);
+    }
+
     #[DataProvider('renewalStates')]
     public function testRenewalReplacesDatesAndPreservesManagementAndActivation(array $fields, string $initialTtl, string $currentTtl, bool $unlimited): void
     {

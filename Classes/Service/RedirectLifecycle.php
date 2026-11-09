@@ -254,6 +254,14 @@ final class RedirectLifecycle
 
     private function applyAction(int $uid, bool $adopt, ?string $expectedState = null): ?string
     {
+        $record = [];
+        if ($adopt) {
+            $record = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false) ?? [];
+            $decision = $this->actionDecision($record, true);
+            if (!isset($decision['mode'])) {
+                return $decision['reason'];
+            }
+        }
         return $this->write($uid, function (array $record) use ($uid, $adopt, $expectedState): ?string {
             $decision = $this->actionDecision($record, $adopt);
             if (!isset($decision['mode'])) {
@@ -279,7 +287,7 @@ final class RedirectLifecycle
                 throw new \RuntimeException(implode("\n", $dataHandler->errorLog), self::LIFETIME_RESTART_FAILED);
             }
             return null;
-        });
+        }, $record);
     }
 
     private function write(int $uid, \Closure $operation, array $record = []): ?string
