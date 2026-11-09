@@ -42,6 +42,7 @@ The screenshot shows local example values; the defaults are listed below.
 | `minimumRemainingLifetime` | `90` | Renew on a valid hit only below this many remaining days. |
 | `renewalLifetime` | `180` | Remaining lifetime in days after hit renewal; must exceed the minimum. |
 | `cleanupGracePeriod` | `90` | Days after expiry before scheduled deletion is allowed. |
+| `disabledRetentionDays` | `0` | Retention after disabling, in days. Zero excludes disabled redirects from cleanup. |
 
 Initial lifetimes follow Core calendar days. Hit renewal and cleanup grace use
 fixed 24-hour days. Changing settings leaves existing dates unchanged until a
@@ -67,8 +68,8 @@ are excluded.
 
 The Core **Protected** switch pauses management and clears managed dates.
 Removing protection starts a fresh lifetime for managed redirects. Manually
-disabling a redirect prevents hit renewal and cleanup; re-enabling a managed
-redirect restarts its lifetime. Editors need the normal TYPO3 field permission
+disabling a redirect prevents hit renewal. Optional disabled retention can later
+soft-delete it; re-enabling a managed redirect restarts its lifetime. Editors need the normal TYPO3 field permission
 for **Lifetime management**.
 
 ### TYPO3 14 list features
@@ -168,8 +169,9 @@ and their grace period:
   expiry plus the **current** global `cleanupGracePeriod`. They never renew
   automatically. Changing the grace setting changes when these records become due.
 
-Short URLs, QR codes, protected records, and manually disabled records are
-excluded. `--dry-run` lists all due candidates with their effective deletion
+Short URLs, QR codes, and protected records are always excluded. Disabled records
+are excluded by default; the optional policy below uses a separate countdown.
+`--dry-run` lists all due candidates with their effective deletion
 times and leaves records unchanged.
 
 Deletion uses TYPO3 DataHandler and retains records and history for restoration.
@@ -184,6 +186,37 @@ For a daily run, add a Scheduler task with an interval of **86400 seconds**:
 No task is enabled automatically. Review overlapping cleanup jobs: Core's
 `redirects:cleanup` does not follow this extension's grace periods and exclusions.
 Before production use, verify behavior with your database, cache, and locking setup.
+
+### Optional retention for disabled redirects
+
+Set **disabledRetentionDays** to a positive number to retain unprotected disabled
+normal redirects for that many fixed 24-hour days before soft deletion. The
+default **0** excludes disabled redirects from cleanup, including existing countdowns.
+
+Newly disabled records get a deadline immediately, even without an expiry. To
+initialize existing disabled records from the current time, preview and execute:
+
+```sh
+vendor/bin/typo3 redirect-lifecycle:adopt
+vendor/bin/typo3 redirect-lifecycle:adopt --execute
+```
+
+The command shows **Start disabled retention** for uninitialized records. It
+preserves the disabled flag and expiry. Ordinary lifetime modes remain unchanged;
+legacy records with an expiry are still classified as fixed, as described above.
+Repeated adoption, unrelated edits, and changing the configured period do not
+restart an initialized countdown. Existing expiry-based deletion dates are never
+mistaken for disabled countdowns.
+
+Protected disabled records remain protected and receive no countdown. Adding
+protection cancels a countdown; explicitly removing protection while the record
+is still disabled starts a fresh one. Adoption never removes protection.
+
+Re-enabling cancels the disabled deadline: managed redirects start a full lifetime,
+while fixed expiries retain their date. Restoring a record with initialized disabled
+retention grants a fresh window without enabling it. The **Access** tab shows initialized
+deadlines as read-only **Earliest automatic deletion** values. Final deletion
+remains the Recycler's responsibility.
 
 ## Use with Sluggi
 

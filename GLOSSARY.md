@@ -17,16 +17,19 @@ A redirect request actually executed by TYPO3 while the redirect is valid, inclu
 A redirect excluded from automatic expiry management and automatic deletion. Protection does not cancel a fixed expiry time or prevent manual deletion.
 
 **Fixed expiry time**:
-An explicitly chosen expiry time that takes precedence over automatic lifetime renewal. A redirect with a fixed expiry time is not automatically renewed, but may be soft-deleted after expiry and the cleanup grace period unless protected or manually disabled.
+An explicitly chosen expiry time that takes precedence over automatic lifetime renewal. Enabled fixed-expiry redirects may be soft-deleted after expiry and the cleanup grace period; disabled redirects follow the optional disabled-retention policy, and protection always prevents automatic deletion.
 
 **Manually disabled redirect**:
-A redirect explicitly switched off and excluded from automatic deletion. Expiry alone does not make a redirect manually disabled.
+A redirect explicitly switched off, without changing its lifetime-management membership. It cannot renew through hits and is excluded from automatic deletion unless an unprotected disabled-retention countdown has been initialized.
+
+**Disabled retention period**:
+A configured waiting period starting when an unprotected normal redirect is disabled or its existing disabled countdown is explicitly initialized. It does not enable the redirect or change its expiry time.
 
 **Cleanup grace period**:
 The waiting period after a redirect's expiry time before automatic soft deletion is allowed.
 
 **Deletion time**:
-The earliest time at which a redirect may be automatically soft-deleted, provided it remains expired, unprotected, and not manually disabled. Managed redirects retain a stored deletion time; fixed expiries use their expiry plus the current cleanup grace period.
+The earliest time at which an eligible, unprotected redirect may be automatically soft-deleted. Enabled redirects use expiry-based deletion times; disabled redirects may use a separate retention deadline, independently of expiry.
 
 **Existing redirect adoption**:
 An explicitly initiated enrollment of eligible existing redirects in automatic lifecycle management. Adoption starts a full initial lifetime and does not renew redirects that have already been adopted.

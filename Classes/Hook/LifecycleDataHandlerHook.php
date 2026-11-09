@@ -46,7 +46,9 @@ final class LifecycleDataHandlerHook
             $renew = in_array(RedirectLifecycle::RENEWAL_ASPECT, $aspects, true)
                 && in_array($input['tx_redirectlifecycle_mode'] ?? null, [RedirectLifecycle::MODE_MANAGED, (string)RedirectLifecycle::MODE_MANAGED], true)
                 && ($dataHandler->BE_USER->isAdmin() || $dataHandler->BE_USER->check('non_exclude_fields', 'sys_redirect:tx_redirectlifecycle_mode'));
-            $record = $this->lifecycle->prepareUpdate($previous, $record, $renew);
+            $initializeRetention = in_array(RedirectLifecycle::DISABLED_RETENTION_ASPECT, $aspects, true)
+                && ($dataHandler->BE_USER->isAdmin() || $dataHandler->BE_USER->check('non_exclude_fields', 'sys_redirect:tx_redirectlifecycle_mode'));
+            $record = $this->lifecycle->prepareUpdate($previous, $record, $renew, $initializeRetention);
             return;
         }
         // Core-created metadata is trusted; editor changes use the fields permitted by DataHandler.

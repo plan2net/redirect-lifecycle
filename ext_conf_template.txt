@@ -2,6 +2,8 @@
 redirectTTL = 0
 # cat=basic; type=int+; label=LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:settings.cleanupGracePeriod
 cleanupGracePeriod = 90
+# cat=basic; type=int+; label=LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:settings.disabledRetentionDays
+disabledRetentionDays = 0
 # cat=basic; type=int+; label=LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:settings.minimumRemainingLifetime
 minimumRemainingLifetime = 90
 # cat=basic; type=int+; label=LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:settings.renewalLifetime

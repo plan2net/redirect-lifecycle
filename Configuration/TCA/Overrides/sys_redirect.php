@@ -6,6 +6,9 @@ use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 
 ExtensionManagementUtility::addTCAcolumns('sys_redirect', [
+    'tx_redirectlifecycle_disabled_retention' => [
+        'config' => ['type' => 'check', 'readOnly' => true, 'default' => 0],
+    ],
     'tx_redirectlifecycle_mode' => [
         'exclude' => true,
         'label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:mode',
@@ -28,7 +31,10 @@ ExtensionManagementUtility::addTCAcolumns('sys_redirect', [
     'tx_redirectlifecycle_delete_after' => [
         'exclude' => true,
         'label' => 'LLL:EXT:redirect_lifecycle/Resources/Private/Language/locallang.xlf:deleteAfter',
-        'displayCond' => 'FIELD:tx_redirectlifecycle_mode:=:' . RedirectLifecycle::MODE_MANAGED,
+        'displayCond' => ['OR' => [
+            'FIELD:tx_redirectlifecycle_mode:=:' . RedirectLifecycle::MODE_MANAGED,
+            'FIELD:tx_redirectlifecycle_disabled_retention:=:1',
+        ]],
         'config' => ['type' => 'datetime', 'readOnly' => true],
     ],
 ]);

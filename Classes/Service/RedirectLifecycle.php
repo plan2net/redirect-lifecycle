@@ -20,6 +20,7 @@ use TYPO3\CMS\Core\Utility\MathUtility;
 final class RedirectLifecycle
 {
     public const RENEWAL_ASPECT = 'redirect-lifecycle-renew';
+    public const DISABLED_RETENTION_ASPECT = 'redirect-lifecycle-disabled-retention';
 
     public const MODE_UNMANAGED = 0;
     public const MODE_MANAGED = 1;
@@ -41,6 +42,7 @@ final class RedirectLifecycle
     private const INITIAL_LIFETIME_OUT_OF_RANGE = 1791014402;
     private const LIFETIME_FIELD_PERMISSION_DENIED = 1791014404;
     private const LIFETIME_RESTART_FAILED = 1791014405;
+    private const DISABLED_RETENTION_OVERFLOW = 1794225601;
     private const INVALID_RENEWAL_LIFETIME = 1791100802;
 
     private bool $restoring = false;
@@ -64,16 +66,20 @@ final class RedirectLifecycle
     public function prepareCreation(array $record, ?int $mode = null, ?Site $site = null): array
     {
         $mode ??= (int)($record['endtime'] ?? 0) > 0 ? self::MODE_FIXED : self::MODE_MANAGED;
-        return $this->initialize($record, $mode, $site ?? $this->findSite($record));
+        $record = $this->initialize($record, $mode, $site ?? $this->findSite($record));
+        return array_replace($record, $this->disabledRetentionFields([], $record));
     }
 
-    public function prepareUpdate(array $previous, array $record, bool $renew): array
+    public function prepareUpdate(array $previous, array $record, bool $renew, bool $initializeDisabledRetention = false): array
     {
         $current = array_replace($previous, $record);
         if (($current['redirect_type'] ?? 'default') !== 'default') {
             $record['endtime'] = (int)$previous['tx_redirectlifecycle_mode'] === self::MODE_MANAGED ? $previous['endtime'] : $current['endtime'];
             $record['tx_redirectlifecycle_mode'] = (int)$record['endtime'] > 0 ? self::MODE_FIXED : self::MODE_UNMANAGED;
             $record['tx_redirectlifecycle_delete_after'] = 0;
+            if (!empty($previous['tx_redirectlifecycle_disabled_retention']) || !empty($current['tx_redirectlifecycle_disabled_retention'])) {
+                $record['tx_redirectlifecycle_disabled_retention'] = 0;
+            }
             return $record;
         }
         $mode = (int)($record['tx_redirectlifecycle_mode'] ?? $previous['tx_redirectlifecycle_mode']);
@@ -97,7 +103,40 @@ final class RedirectLifecycle
         } else {
             unset($record['endtime'], $record['tx_redirectlifecycle_delete_after']);
         }
-        return $record;
+        return array_replace($record, $this->disabledRetentionFields($previous, array_replace($current, $record), $initializeDisabledRetention));
+    }
+
+    private function disabledRetentionDays(): int
+    {
+        return $this->nonNegativeInteger($this->extensionConfiguration->get('redirect_lifecycle')['disabledRetentionDays'] ?? 0, 'disabledRetentionDays');
+    }
+
+    private function disabledRetentionFields(array $previous, array $current, bool $initialize = false): array
+    {
+        $clear = !empty($current['tx_redirectlifecycle_disabled_retention']) || !empty($previous['tx_redirectlifecycle_disabled_retention'])
+            ? ['tx_redirectlifecycle_disabled_retention' => 0] : [];
+        if (($current['redirect_type'] ?? 'default') !== 'default' || empty($current['disabled']) || !empty($current['protected'])) {
+            return !empty($current['protected']) && $clear !== [] ? $clear + ['tx_redirectlifecycle_delete_after' => 0] : $clear;
+        }
+        // Only marked dates are disabled countdowns; old managed deletion dates must not be reused.
+        if (!empty($previous['disabled']) && empty($previous['protected'])
+            && !empty($previous['tx_redirectlifecycle_disabled_retention']) && (int)$previous['tx_redirectlifecycle_delete_after'] > 0
+        ) {
+            $fields = (int)($current['tx_redirectlifecycle_disabled_retention'] ?? 0) === 1 ? [] : ['tx_redirectlifecycle_disabled_retention' => 1];
+            if ((int)$current['tx_redirectlifecycle_delete_after'] !== (int)$previous['tx_redirectlifecycle_delete_after']) {
+                $fields['tx_redirectlifecycle_delete_after'] = $previous['tx_redirectlifecycle_delete_after'];
+            }
+            return $fields;
+        }
+        $days = $this->disabledRetentionDays();
+        if ($days === 0 || (!$initialize && !empty($previous['disabled']) && empty($previous['protected']))) {
+            return $clear;
+        }
+        $now = $this->context->getAspect('date')->getDateTime()->getTimestamp();
+        if ($days > intdiv(PHP_INT_MAX - $now, self::SECONDS_PER_DAY)) {
+            throw new \InvalidArgumentException('Disabled retention exceeds the supported timestamp range.', self::DISABLED_RETENTION_OVERFLOW);
+        }
+        return ['tx_redirectlifecycle_disabled_retention' => 1, 'tx_redirectlifecycle_delete_after' => $now + $days * self::SECONDS_PER_DAY];
     }
 
     public function restore(int $uid, mixed $value, DataHandler $dataHandler, bool &$commandIsProcessed): void
@@ -107,7 +146,8 @@ final class RedirectLifecycle
         }
         $record = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false);
         if (!$record || !$record['deleted']
-            || (int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED
+            || ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED
+                && (empty($record['disabled']) || empty($record['tx_redirectlifecycle_disabled_retention'])))
             || ($record['redirect_type'] ?? 'default') !== 'default'
         ) {
             return;
@@ -131,12 +171,13 @@ final class RedirectLifecycle
                 }
                 $restored = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false);
                 if ($before && $before['deleted'] && $restored && !$restored['deleted']
-                    && (int)$restored['tx_redirectlifecycle_mode'] === self::MODE_MANAGED
                     && ($restored['redirect_type'] ?? 'default') === 'default'
                 ) {
-                    $initialized = $this->initialize($restored, self::MODE_MANAGED, $this->findSite($restored));
+                    $initialized = (int)$restored['tx_redirectlifecycle_mode'] === self::MODE_MANAGED
+                        ? $this->initialize($restored, self::MODE_MANAGED, $this->findSite($restored)) : $restored;
+                    $initialized = array_replace($initialized, $this->disabledRetentionFields([], $initialized));
                     $this->connectionPool->getConnectionForTable('sys_redirect')->update('sys_redirect', array_intersect_key($initialized, array_flip([
-                        'endtime', 'tx_redirectlifecycle_delete_after',
+                        'endtime', 'tx_redirectlifecycle_delete_after', 'tx_redirectlifecycle_disabled_retention',
                     ])), ['uid' => $uid]);
                 }
                 $record = $restored ?: $record;
@@ -215,7 +256,7 @@ final class RedirectLifecycle
     {
         return $this->write($uid, function (array $record) use ($uid, $adopt, $expectedState): ?string {
             $reason = $this->actionReason($record, $adopt);
-            if ($reason !== 'eligible' && (!$adopt || $reason !== 'markFixed')) {
+            if ($reason !== 'eligible' && (!$adopt || !in_array($reason, ['markFixed', 'startDisabledRetention'], true))) {
                 return $reason;
             }
             if ($expectedState !== null && !hash_equals($this->previewRenewal($record)['state'], $expectedState)) {
@@ -227,11 +268,18 @@ final class RedirectLifecycle
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
             // Native non-admin validation requires source and target, even when unchanged.
             $dataHandler->start(['sys_redirect' => [$uid => [
-                'tx_redirectlifecycle_mode' => $reason === 'markFixed' ? self::MODE_FIXED : self::MODE_MANAGED,
+                'tx_redirectlifecycle_mode' => match ($reason) {
+                    'markFixed' => self::MODE_FIXED,
+                    'startDisabledRetention' => (int)$record['tx_redirectlifecycle_mode'],
+                    default => self::MODE_MANAGED,
+                },
                 'source_host' => $record['source_host'], 'target' => $record['target'],
             ]]], []);
             if (!$adopt && $dataHandler->getCorrelationId() !== null) {
                 $dataHandler->setCorrelationId($dataHandler->getCorrelationId()->withAspects(self::RENEWAL_ASPECT));
+            }
+            if ($adopt && $dataHandler->getCorrelationId() !== null) {
+                $dataHandler->setCorrelationId($dataHandler->getCorrelationId()->withAspects(self::DISABLED_RETENTION_ASPECT));
             }
             $dataHandler->process_datamap();
             if ($dataHandler->errorLog !== []) {
@@ -272,11 +320,11 @@ final class RedirectLifecycle
     public function cleanupCandidates(int $now): array
     {
         $records = $this->cleanupQuery($now)
-            ->select('uid', 'source_host', 'source_path', 'endtime', 'tx_redirectlifecycle_delete_after', 'tx_redirectlifecycle_mode')
+            ->select('uid', 'source_host', 'source_path', 'endtime', 'tx_redirectlifecycle_delete_after', 'tx_redirectlifecycle_mode', 'disabled')
             ->executeQuery()->fetchAllAssociative();
         $grace = $this->nonNegativeInteger($this->extensionConfiguration->get('redirect_lifecycle', 'cleanupGracePeriod'), 'cleanupGracePeriod');
         foreach ($records as $index => $record) {
-            if ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED) {
+            if (empty($record['disabled']) && (int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED) {
                 $records[$index]['tx_redirectlifecycle_delete_after'] = (int)$record['endtime'] + $grace * self::SECONDS_PER_DAY;
             }
         }
@@ -291,24 +339,39 @@ final class RedirectLifecycle
         $grace = $this->nonNegativeInteger($this->extensionConfiguration->get('redirect_lifecycle', 'cleanupGracePeriod'), 'cleanupGracePeriod');
         // A grace period longer than the Unix epoch's age cannot be due; avoid integer overflow.
         $fixedCutoff = $grace > intdiv(max(0, $now), self::SECONDS_PER_DAY) ? 0 : $now - $grace * self::SECONDS_PER_DAY;
-        $query->select('uid')->from('sys_redirect')->orderBy('uid')->where(
-            $query->expr()->eq('deleted', 0),
+        $enabledExpiry = $query->expr()->and(
             $query->expr()->eq('disabled', 0),
-            $query->expr()->eq('protected', 0),
+            $query->expr()->eq('tx_redirectlifecycle_disabled_retention', 0),
             $query->expr()->gt('endtime', 0),
             $query->expr()->lt('endtime', $query->createNamedParameter($now, Connection::PARAM_INT)),
-            $query->expr()->or(
-                $query->expr()->and(
-                    $query->expr()->eq('tx_redirectlifecycle_mode', self::MODE_MANAGED),
-                    $query->expr()->gt('tx_redirectlifecycle_delete_after', 0),
-                    $query->expr()->gte('tx_redirectlifecycle_delete_after', 'endtime'),
-                    $query->expr()->lte('tx_redirectlifecycle_delete_after', $query->createNamedParameter($now, Connection::PARAM_INT)),
-                ),
-                $query->expr()->and(
-                    $query->expr()->in('tx_redirectlifecycle_mode', [self::MODE_UNMANAGED, self::MODE_FIXED]),
-                    $query->expr()->lte('endtime', $query->createNamedParameter($fixedCutoff, Connection::PARAM_INT)),
-                ),
+        );
+        // Separate branches let each deadline range use its matching index.
+        $eligible = [
+            $query->expr()->and(
+                $enabledExpiry,
+                $query->expr()->eq('tx_redirectlifecycle_mode', self::MODE_MANAGED),
+                $query->expr()->gt('tx_redirectlifecycle_delete_after', 0),
+                $query->expr()->gte('tx_redirectlifecycle_delete_after', 'endtime'),
+                $query->expr()->lte('tx_redirectlifecycle_delete_after', $query->createNamedParameter($now, Connection::PARAM_INT)),
             ),
+            $query->expr()->and(
+                $enabledExpiry,
+                $query->expr()->in('tx_redirectlifecycle_mode', [self::MODE_UNMANAGED, self::MODE_FIXED]),
+                $query->expr()->lte('endtime', $query->createNamedParameter($fixedCutoff, Connection::PARAM_INT)),
+            ),
+        ];
+        if ($this->disabledRetentionDays() > 0) {
+            $eligible[] = $query->expr()->and(
+                $query->expr()->eq('disabled', 1),
+                $query->expr()->eq('tx_redirectlifecycle_disabled_retention', 1),
+                $query->expr()->gt('tx_redirectlifecycle_delete_after', 0),
+                $query->expr()->lte('tx_redirectlifecycle_delete_after', $query->createNamedParameter($now, Connection::PARAM_INT)),
+            );
+        }
+        $query->select('uid')->from('sys_redirect')->orderBy('uid')->where(
+            $query->expr()->eq('deleted', 0),
+            $query->expr()->eq('protected', 0),
+            $query->expr()->or(...$eligible),
         );
         if (isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
             $query->andWhere($query->expr()->eq('redirect_type', $query->createNamedParameter('default')));
@@ -330,6 +393,7 @@ final class RedirectLifecycle
         $query->select(
             'uid', 'source_host', 'source_path', 'tx_redirectlifecycle_mode',
             'deleted', 'protected', 'disabled', 'starttime', 'endtime',
+            'tx_redirectlifecycle_disabled_retention', 'tx_redirectlifecycle_delete_after',
         )->from('sys_redirect')->orderBy('uid');
         if (isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
             $query->addSelect('redirect_type');
@@ -363,11 +427,15 @@ final class RedirectLifecycle
             return 'excludedType';
         }
         if ($adopt) {
-            if ((int)$record['tx_redirectlifecycle_mode'] === self::MODE_MANAGED) {
-                return 'alreadyManaged';
-            }
             if ((int)$record['tx_redirectlifecycle_mode'] === self::MODE_UNMANAGED && (int)$record['endtime'] > 0) {
                 return 'markFixed';
+            }
+            if (!empty($record['disabled']) && empty($record['protected']) && $this->disabledRetentionDays() > 0) {
+                return !empty($record['tx_redirectlifecycle_disabled_retention']) && (int)$record['tx_redirectlifecycle_delete_after'] > 0
+                    ? 'disabledRetentionActive' : 'startDisabledRetention';
+            }
+            if ((int)$record['tx_redirectlifecycle_mode'] === self::MODE_MANAGED) {
+                return 'alreadyManaged';
             }
             if ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_UNMANAGED || (int)$record['endtime'] !== 0) {
                 return 'fixed';
