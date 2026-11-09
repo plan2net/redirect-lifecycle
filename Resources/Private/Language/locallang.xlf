@@ -17,7 +17,7 @@
             <trans-unit id="backend.invalidToken" resname="backend.invalidToken"><source>The confirmation is invalid. Open the lifetime preview again.</source></trans-unit>
             <trans-unit id="backend.changed" resname="backend.changed"><source>The redirect or lifetime settings changed. Review the updated preview and confirm again.</source></trans-unit>
             <trans-unit id="cache.committedFailure" resname="cache.committedFailure"><source>Redirect UID %d was saved, but cache rebuilding failed. The database change was not rolled back.</source></trans-unit>
-            <trans-unit id="action.adoptDescription" resname="action.adoptDescription"><source>Preview or explicitly adopt eligible existing redirects.</source></trans-unit>
+            <trans-unit id="action.adoptDescription" resname="action.adoptDescription"><source>Preview or explicitly adopt eligible redirects and classify existing fixed expiries.</source></trans-unit>
             <trans-unit id="action.renewDescription" resname="action.renewDescription"><source>Preview or explicitly restart selected managed lifetimes.</source></trans-unit>
             <trans-unit id="action.uids" resname="action.uids"><source>Redirect UIDs; omission previews the whole stock for adoption.</source></trans-unit>
             <trans-unit id="action.execute" resname="action.execute"><source>Apply the action after showing the preview.</source></trans-unit>
@@ -32,6 +32,7 @@
             <trans-unit id="action.excludedType" resname="action.excludedType"><source>Excluded redirect type</source></trans-unit>
             <trans-unit id="action.alreadyManaged" resname="action.alreadyManaged"><source>Already managed</source></trans-unit>
             <trans-unit id="action.fixed" resname="action.fixed"><source>Fixed expiry</source></trans-unit>
+            <trans-unit id="action.markFixed" resname="action.markFixed"><source>Mark as fixed expiry</source></trans-unit>
             <trans-unit id="action.protected" resname="action.protected"><source>Protected</source></trans-unit>
             <trans-unit id="action.disabled" resname="action.disabled"><source>Manually disabled</source></trans-unit>
             <trans-unit id="action.notStarted" resname="action.notStarted"><source>Not yet active</source></trans-unit>

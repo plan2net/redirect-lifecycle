@@ -215,7 +215,7 @@ final class RedirectLifecycle
     {
         return $this->write($uid, function (array $record) use ($uid, $adopt, $expectedState): ?string {
             $reason = $this->actionReason($record, $adopt);
-            if ($reason !== 'eligible') {
+            if ($reason !== 'eligible' && (!$adopt || $reason !== 'markFixed')) {
                 return $reason;
             }
             if ($expectedState !== null && !hash_equals($this->previewRenewal($record)['state'], $expectedState)) {
@@ -227,7 +227,8 @@ final class RedirectLifecycle
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
             // Native non-admin validation requires source and target, even when unchanged.
             $dataHandler->start(['sys_redirect' => [$uid => [
-                'tx_redirectlifecycle_mode' => self::MODE_MANAGED, 'source_host' => $record['source_host'], 'target' => $record['target'],
+                'tx_redirectlifecycle_mode' => $reason === 'markFixed' ? self::MODE_FIXED : self::MODE_MANAGED,
+                'source_host' => $record['source_host'], 'target' => $record['target'],
             ]]], []);
             if (!$adopt && $dataHandler->getCorrelationId() !== null) {
                 $dataHandler->setCorrelationId($dataHandler->getCorrelationId()->withAspects(self::RENEWAL_ASPECT));
@@ -347,6 +348,9 @@ final class RedirectLifecycle
         if ($adopt) {
             if ((int)$record['tx_redirectlifecycle_mode'] === self::MODE_MANAGED) {
                 return 'alreadyManaged';
+            }
+            if ((int)$record['tx_redirectlifecycle_mode'] === self::MODE_UNMANAGED && (int)$record['endtime'] > 0) {
+                return 'markFixed';
             }
             if ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_UNMANAGED || (int)$record['endtime'] !== 0) {
                 return 'fixed';

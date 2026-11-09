@@ -50,6 +50,10 @@ final class ActionTest extends FunctionalTestCase
     public function testAdoptionCanRunAsSchedulerTaskAndStillRequiresExecute(): void
     {
         self::assertArrayHasKey('redirect-lifecycle:adopt', iterator_to_array($this->get(CommandRegistry::class)->getSchedulableCommands()));
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->insert('sys_redirect', [
+            'uid' => 101, 'source_host' => '*', 'source_path' => '/fixed-expiry', 'target' => 'https://target.test/', 'endtime' => 2000000000,
+        ]);
+        $fixedBefore = $this->record(101);
         $before = $this->record(100);
         $task = GeneralUtility::makeInstance(ExecuteSchedulableCommandTask::class);
         if (method_exists($task, 'setTaskType')) {
@@ -59,6 +63,7 @@ final class ActionTest extends FunctionalTestCase
         }
         self::assertTrue($task->execute());
         self::assertSame($before, $this->record(100));
+        self::assertSame($fixedBefore, $this->record(101));
 
         if (method_exists($task, 'setTaskType')) {
             $task->setTaskParameters(['options' => ['execute' => true]]);
@@ -71,6 +76,8 @@ final class ActionTest extends FunctionalTestCase
         self::assertSame(1, (int)$adopted['tx_redirectlifecycle_mode']);
         self::assertSame((new \DateTimeImmutable('2026-04-16 UTC'))->getTimestamp(), (int)$adopted['endtime']);
         self::assertSame((new \DateTimeImmutable('2026-04-23 UTC'))->getTimestamp(), (int)$adopted['tx_redirectlifecycle_delete_after']);
+        self::assertSame(2, (int)$this->record(101)['tx_redirectlifecycle_mode']);
+        self::assertSame($fixedBefore['endtime'], $this->record(101)['endtime']);
     }
 
     public function testAdoptionDefaultsToPreviewWithoutChangingLegacyRecord(): void
@@ -108,6 +115,40 @@ final class ActionTest extends FunctionalTestCase
         self::assertSame((new \DateTimeImmutable('2026-05-13 UTC'))->getTimestamp(), (int)$renewed['tx_redirectlifecycle_delete_after']);
     }
 
+    #[DataProvider('legacyFixedExpiries')]
+    public function testAdoptionMarksLegacyExpiryAsFixedWithoutChangingDates(array $fields): void
+    {
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->update('sys_redirect', $fields, ['uid' => 100]);
+        $before = $this->record(100);
+        $tester = $this->command('adopt');
+        self::assertSame(0, $tester->execute(['uids' => ['100']]));
+        self::assertSame($before, $this->record(100));
+        self::assertStringContainsString('Mark as fixed expiry', $tester->getDisplay());
+
+        self::assertSame(0, $tester->execute(['uids' => ['100'], '--execute' => true]));
+        $after = $this->record(100);
+        self::assertSame(2, (int)$after['tx_redirectlifecycle_mode']);
+        foreach (['endtime', 'starttime', 'protected', 'disabled', 'source_host', 'source_path', 'target'] as $field) {
+            self::assertSame($before[$field], $after[$field], $field);
+        }
+        self::assertSame(0, (int)$after['tx_redirectlifecycle_delete_after']);
+        self::assertStringContainsString('1 redirects updated.', $tester->getDisplay());
+        $this->setTime('2026-05-01 UTC');
+        self::assertSame(0, $tester->execute(['uids' => ['100'], '--execute' => true]));
+        self::assertSame($after, $this->record(100));
+    }
+
+    public static function legacyFixedExpiries(): array
+    {
+        return [
+            'future expiry' => [['endtime' => 2000000000]],
+            'expired' => [['endtime' => 1735689600]],
+            'protected' => [['endtime' => 2000000000, 'protected' => 1]],
+            'disabled' => [['endtime' => 2000000000, 'disabled' => 1]],
+            'not yet active' => [['endtime' => 2000000000, 'starttime' => 1900000000]],
+        ];
+    }
+
     #[DataProvider('adoptionExclusions')]
     public function testAdoptionReportsAndPreservesSkippedRecords(array $fields, string $reason): void
     {
@@ -129,12 +170,12 @@ final class ActionTest extends FunctionalTestCase
             'protected' => [['protected' => 1], 'Protected'],
             'disabled' => [['disabled' => 1], 'Manually disabled'],
             'deleted' => [['deleted' => 1], 'Deleted'],
-            'legacy fixed expiry' => [['endtime' => 2000000000], 'Fixed expiry'],
-            'expired legacy fixed expiry' => [['endtime' => 1735689600], 'Fixed expiry'],
+            'deleted legacy expiry' => [['endtime' => 2000000000, 'deleted' => 1], 'Deleted'],
             'fixed mode without date' => [['tx_redirectlifecycle_mode' => 2], 'Fixed expiry'],
             'already managed' => [['tx_redirectlifecycle_mode' => 1, 'endtime' => 2000000000, 'tx_redirectlifecycle_delete_after' => 2000000000], 'Already managed'],
             'not yet active' => [['starttime' => 2000000000], 'Not yet active'],
             'QR code' => [['redirect_type' => 'qrcode'], 'Excluded redirect type'],
+            'QR code with expiry' => [['redirect_type' => 'qrcode', 'endtime' => 2000000000], 'Excluded redirect type'],
             'short URL' => [['redirect_type' => 'short_url'], 'Excluded redirect type'],
         ];
     }
@@ -285,8 +326,10 @@ final class ActionTest extends FunctionalTestCase
         return [['adopt'], ['renew']];
     }
 
-    public function testPreviewDoesNotAuthenticateCliUserAndExecuteKeepsFieldPermissions(): void
+    #[DataProvider('adoptionPermissionStates')]
+    public function testPreviewDoesNotAuthenticateCliUserAndExecuteKeepsFieldPermissions(array $fields): void
     {
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->update('sys_redirect', $fields, ['uid' => 100]);
         $before = $this->record(100);
         // Native session authentication uses wall-clock time, independently of lifecycle test time.
         $GLOBALS['EXEC_TIME'] = time();
@@ -305,6 +348,14 @@ final class ActionTest extends FunctionalTestCase
         self::assertSame(0, $this->command('renew')->execute(['uids' => ['100']]));
         self::assertArrayNotHasKey('BE_USER', $GLOBALS);
         self::assertSame($before, $this->record(100));
+    }
+
+    public static function adoptionPermissionStates(): array
+    {
+        return [
+            'enrollment' => [['endtime' => 0]],
+            'fixed classification' => [['endtime' => 2000000000]],
+        ];
     }
 
     public function testActionsUseCurrentStorageSiteTtlIncludingAuthoritativeZero(): void
@@ -354,8 +405,11 @@ final class ActionTest extends FunctionalTestCase
     }
 
     #[DataProvider('changedCandidates')]
-    public function testActionsRecheckChangedCandidatesAfterPreview(string $action, array $fields, string $reason): void
+    public function testActionsRecheckChangedCandidatesAfterPreview(string $action, array $fields, string $reason, array $initialFields = []): void
     {
+        if ($initialFields !== []) {
+            $this->getConnectionPool()->getConnectionForTable('sys_redirect')->update('sys_redirect', $initialFields, ['uid' => 100]);
+        }
         if ($action === 'renew') {
             $this->command('adopt')->execute(['uids' => ['100'], '--execute' => true]);
         }
@@ -396,6 +450,7 @@ final class ActionTest extends FunctionalTestCase
             'adoption disabled' => ['adopt', ['disabled' => 1], 'Manually disabled'],
             'adoption fixed' => ['adopt', ['tx_redirectlifecycle_mode' => 2, 'endtime' => 2000000000], 'Fixed expiry'],
             'adoption already enrolled' => ['adopt', ['tx_redirectlifecycle_mode' => 1], 'Already managed'],
+            'legacy expiry enrolled during preview' => ['adopt', ['tx_redirectlifecycle_mode' => 1], 'Already managed', ['endtime' => 2000000000]],
             'renewal no longer managed' => ['renew', ['tx_redirectlifecycle_mode' => 0], 'Unmanaged'],
             'renewal fixed' => ['renew', ['tx_redirectlifecycle_mode' => 2, 'endtime' => 2000000000], 'Fixed expiry'],
         ];

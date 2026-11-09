@@ -5,6 +5,7 @@ The lifecycle model was confirmed at the end of the design interview on 2026-10-
 - The Core site setting `redirects.redirectTTL` determines the initial lifetime. See [ADR 0001](adr/0001-use-core-redirect-ttl.md).
 - TYPO3 12.4, 13.4, and 14 are mandatory targets; TYPO3 11 is excluded. In TYPO3 14 only normal redirects are eligible, including for existing redirect adoption. See [ADR 0002](adr/0002-supported-versions-and-redirect-types.md).
 - Setting a fixed expiry time ends automatic management. Removing that time does not restore membership; explicit enrollment starts a full initial lifetime.
+- Explicit adoption execution also classifies unmanaged normal redirects with an existing expiry as fixed, preserving their expiry and activation flags. This classification includes expired, protected, and disabled records; it does not enroll them in automatic management. Preview remains read-only.
 - Explicit lifetime renewal and manual reactivation replace expiry and deletion times with a full initial lifetime, even if this shortens the remaining lifetime.
 - New normal redirects without a fixed expiry time belong to automatic management even if initially protected. Protection pauses management. Removing protection from an existing redirect that has not been adopted does not enroll it.
 - A TTL of zero means a managed redirect without expiry or deletion times. Hits do not create an expiry time. Configuration changes do not alter stored dates or create missing ones; an explicit lifetime restart uses the current TTL.

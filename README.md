@@ -122,6 +122,12 @@ Only active, unprotected normal redirects without an expiry are eligible.
 Omitting UIDs with `--execute` adopts all eligible redirects. Already managed
 redirects keep their dates.
 
+On all supported TYPO3 versions, `adopt --execute` also marks unmanaged normal
+redirects with an existing expiry as **Fixed expiry time**. This includes expired,
+protected, and disabled records. Their expiry and activation flags are preserved;
+they are not enrolled in automatic management. Preview lists these records as
+**Mark as fixed expiry** and leaves them unchanged.
+
 To adopt redirects once from the backend, add a **Scheduler** task:
 
 - **TYPO3 12/13:** choose **Execute console commands**, then `redirect-lifecycle:adopt`.
