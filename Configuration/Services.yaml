@@ -8,6 +8,9 @@ services:
   TYPO3\CMS\Redirects\Service\RedirectCacheService:
     alias: Plan2net\RedirectLifecycle\Service\RedirectCacheService
     public: true
+  Plan2net\RedirectLifecycle\Repository\RedirectRepository: ~
+  TYPO3\CMS\Redirects\Repository\RedirectRepository:
+    alias: Plan2net\RedirectLifecycle\Repository\RedirectRepository
   Plan2net\RedirectLifecycle\Command\CleanupCommand:
     tags:
       - name: console.command
