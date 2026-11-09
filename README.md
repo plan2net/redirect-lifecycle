@@ -112,6 +112,15 @@ Only active, unprotected normal redirects without an expiry are eligible.
 Omitting UIDs with `--execute` adopts all eligible redirects. Already managed
 redirects keep their dates.
 
+To adopt redirects once from the backend, add a **Scheduler** task:
+
+- **TYPO3 12/13:** choose **Execute console commands**, then `redirect-lifecycle:adopt`.
+- **TYPO3 14:** choose the `redirect-lifecycle:adopt` task directly.
+
+Select **Single execution**, set the execution time, and enable **execute** to
+apply adoption. Leave **uids** empty to adopt all eligible redirects. Save and
+run the task from the Scheduler. Without **execute**, it only previews candidates.
+
 For an explicit lifetime reset from the command line:
 
 ```sh

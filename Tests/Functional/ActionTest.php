@@ -21,6 +21,7 @@ use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Redirects\Service\RedirectService;
+use TYPO3\CMS\Scheduler\Task\ExecuteSchedulableCommandTask;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 
 final class ActionTest extends FunctionalTestCase
@@ -44,6 +45,32 @@ final class ActionTest extends FunctionalTestCase
         $GLOBALS['LANG'] = $this->get(LanguageServiceFactory::class)->createFromUserPreferences($user);
         $this->setTime('2026-04-11 UTC');
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle'] = ['redirectTTL' => '5', 'cleanupGracePeriod' => '7'];
+    }
+
+    public function testAdoptionCanRunAsSchedulerTaskAndStillRequiresExecute(): void
+    {
+        self::assertArrayHasKey('redirect-lifecycle:adopt', iterator_to_array($this->get(CommandRegistry::class)->getSchedulableCommands()));
+        $before = $this->record(100);
+        $task = GeneralUtility::makeInstance(ExecuteSchedulableCommandTask::class);
+        if (method_exists($task, 'setTaskType')) {
+            $task->setTaskType('redirect-lifecycle:adopt');
+        } else {
+            $task->setCommandIdentifier('redirect-lifecycle:adopt');
+        }
+        self::assertTrue($task->execute());
+        self::assertSame($before, $this->record(100));
+
+        if (method_exists($task, 'setTaskType')) {
+            $task->setTaskParameters(['options' => ['execute' => true]]);
+        } else {
+            $task->setOptions(['execute' => true]);
+            $task->setOptionValues(['execute' => true]);
+        }
+        self::assertTrue($task->execute());
+        $adopted = $this->record(100);
+        self::assertSame(1, (int)$adopted['tx_redirectlifecycle_mode']);
+        self::assertSame((new \DateTimeImmutable('2026-04-16 UTC'))->getTimestamp(), (int)$adopted['endtime']);
+        self::assertSame((new \DateTimeImmutable('2026-04-23 UTC'))->getTimestamp(), (int)$adopted['tx_redirectlifecycle_delete_after']);
     }
 
     public function testAdoptionDefaultsToPreviewWithoutChangingLegacyRecord(): void
@@ -205,14 +232,13 @@ final class ActionTest extends FunctionalTestCase
         return [['0'], ['-1'], ['1.5'], ['invalid']];
     }
 
-    public function testMissingUidIsReportedAndActionsAreNotSchedulable(): void
+    public function testMissingUidIsReportedAndRenewalIsNotSchedulable(): void
     {
         $tester = $this->command('renew');
         self::assertSame(0, $tester->execute(['uids' => ['999'], '--execute' => true]));
         self::assertStringContainsString('Record missing', $tester->getDisplay());
         $commands = iterator_to_array($this->get(CommandRegistry::class)->getSchedulableCommands());
         self::assertArrayHasKey('redirect-lifecycle:cleanup', $commands);
-        self::assertArrayNotHasKey('redirect-lifecycle:adopt', $commands);
         self::assertArrayNotHasKey('redirect-lifecycle:renew', $commands);
     }
 

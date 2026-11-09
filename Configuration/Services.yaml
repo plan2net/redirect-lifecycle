@@ -20,7 +20,7 @@ services:
     tags:
       - name: console.command
         command: redirect-lifecycle:adopt
-        schedulable: false
+        schedulable: true
   redirect_lifecycle.renew:
     class: Plan2net\RedirectLifecycle\Command\LifecycleActionCommand
     arguments:
