@@ -41,7 +41,7 @@
             <trans-unit id="action.skipped" resname="action.skipped"><source>Skipped UID %d: %s</source></trans-unit>
             <trans-unit id="action.permission" resname="action.permission"><source>Lifetime field permission is required.</source></trans-unit>
             <trans-unit id="cleanup.deleted" resname="cleanup.deleted"><source>%d redirects soft-deleted.</source></trans-unit>
-            <trans-unit id="cleanup.description" resname="cleanup.description"><source>Soft-delete due managed redirects using their stored deletion times.</source></trans-unit>
+            <trans-unit id="cleanup.description" resname="cleanup.description"><source>Soft-delete expired normal redirects after their cleanup grace periods.</source></trans-unit>
             <trans-unit id="cleanup.dryRun" resname="cleanup.dryRun"><source>Show deletion candidates without changing records.</source></trans-unit>
             <trans-unit id="cleanup.host" resname="cleanup.host"><source>Source host</source></trans-unit>
             <trans-unit id="cleanup.path" resname="cleanup.path"><source>Source path</source></trans-unit>

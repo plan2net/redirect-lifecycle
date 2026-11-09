@@ -271,9 +271,16 @@ final class RedirectLifecycle
 
     public function cleanupCandidates(int $now): array
     {
-        return $this->cleanupQuery($now)
-            ->select('uid', 'source_host', 'source_path', 'endtime', 'tx_redirectlifecycle_delete_after')
+        $records = $this->cleanupQuery($now)
+            ->select('uid', 'source_host', 'source_path', 'endtime', 'tx_redirectlifecycle_delete_after', 'tx_redirectlifecycle_mode')
             ->executeQuery()->fetchAllAssociative();
+        $grace = $this->nonNegativeInteger($this->extensionConfiguration->get('redirect_lifecycle', 'cleanupGracePeriod'), 'cleanupGracePeriod');
+        foreach ($records as $index => $record) {
+            if ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED) {
+                $records[$index]['tx_redirectlifecycle_delete_after'] = (int)$record['endtime'] + $grace * self::SECONDS_PER_DAY;
+            }
+        }
+        return $records;
     }
 
     private function cleanupQuery(int $now): QueryBuilder
@@ -281,17 +288,27 @@ final class RedirectLifecycle
         $query = $this->connectionPool->getQueryBuilderForTable('sys_redirect');
         // Expired records are the candidates, so native enable-field restrictions must be removed.
         $query->getRestrictions()->removeAll();
+        $grace = $this->nonNegativeInteger($this->extensionConfiguration->get('redirect_lifecycle', 'cleanupGracePeriod'), 'cleanupGracePeriod');
+        // A grace period longer than the Unix epoch's age cannot be due; avoid integer overflow.
+        $fixedCutoff = $grace > intdiv(max(0, $now), self::SECONDS_PER_DAY) ? 0 : $now - $grace * self::SECONDS_PER_DAY;
         $query->select('uid')->from('sys_redirect')->orderBy('uid')->where(
             $query->expr()->eq('deleted', 0),
             $query->expr()->eq('disabled', 0),
             $query->expr()->eq('protected', 0),
-            $query->expr()->eq('tx_redirectlifecycle_mode', self::MODE_MANAGED),
             $query->expr()->gt('endtime', 0),
             $query->expr()->lt('endtime', $query->createNamedParameter($now, Connection::PARAM_INT)),
-            // Exclude unlimited records from the indexed deletion-time range.
-            $query->expr()->gt('tx_redirectlifecycle_delete_after', 0),
-            $query->expr()->gte('tx_redirectlifecycle_delete_after', 'endtime'),
-            $query->expr()->lte('tx_redirectlifecycle_delete_after', $query->createNamedParameter($now, Connection::PARAM_INT)),
+            $query->expr()->or(
+                $query->expr()->and(
+                    $query->expr()->eq('tx_redirectlifecycle_mode', self::MODE_MANAGED),
+                    $query->expr()->gt('tx_redirectlifecycle_delete_after', 0),
+                    $query->expr()->gte('tx_redirectlifecycle_delete_after', 'endtime'),
+                    $query->expr()->lte('tx_redirectlifecycle_delete_after', $query->createNamedParameter($now, Connection::PARAM_INT)),
+                ),
+                $query->expr()->and(
+                    $query->expr()->in('tx_redirectlifecycle_mode', [self::MODE_UNMANAGED, self::MODE_FIXED]),
+                    $query->expr()->lte('endtime', $query->createNamedParameter($fixedCutoff, Connection::PARAM_INT)),
+                ),
+            ),
         );
         if (isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
             $query->andWhere($query->expr()->eq('redirect_type', $query->createNamedParameter('default')));

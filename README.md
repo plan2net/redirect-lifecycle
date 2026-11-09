@@ -58,7 +58,7 @@ lifetime action uses the new values.
 | Mode | Behavior |
 | --- | --- |
 | **Automatic management** | Starts a lifetime using the current TTL. Expiry and earliest deletion are read-only; valid hits can extend them. |
-| **Fixed expiry time** | Lets you edit the native Stop date. Automatic renewal and lifecycle cleanup stop. |
+| **Fixed expiry time** | Lets you edit the native Stop date. No automatic renewal; cleanup can soft-delete the redirect after expiry and the configured grace period. |
 | **No automatic management** | Ends management and clears managed dates. An existing fixed expiry remains until explicitly removed. |
 
 New normal redirects without a fixed expiry use automatic management, including
@@ -160,9 +160,21 @@ To delete due redirects, run:
 vendor/bin/typo3 redirect-lifecycle:cleanup
 ```
 
-Cleanup soft-deletes enabled, unprotected managed redirects only after expiry
-and their stored grace period. It uses TYPO3 DataHandler and retains record
-history. Native restoration starts a new managed lifetime.
+Cleanup soft-deletes enabled, unprotected normal redirects only after expiry
+and their grace period:
+
+- Managed redirects use their stored deletion time.
+- Fixed-expiry redirects and legacy unmanaged redirects with an expiry use
+  expiry plus the **current** global `cleanupGracePeriod`. They never renew
+  automatically. Changing the grace setting changes when these records become due.
+
+Short URLs, QR codes, protected records, and manually disabled records are
+excluded. `--dry-run` lists all due candidates with their effective deletion
+times and leaves records unchanged.
+
+Deletion uses TYPO3 DataHandler and retains records and history for restoration.
+Restoring a managed redirect starts a new managed lifetime; fixed and legacy
+expiries retain their dates. Permanent deletion remains the Recycler's responsibility.
 
 For a daily run, add a Scheduler task with an interval of **86400 seconds**:
 

@@ -103,6 +103,82 @@ final class CleanupTest extends FunctionalTestCase
         ];
     }
 
+    #[DataProvider('fixedExpiryModes')]
+    public function testFixedExpiryIsPreviewedAndSoftDeletedAfterCurrentGrace(int $mode): void
+    {
+        $expiry = (new \DateTimeImmutable('2026-01-11 UTC'))->getTimestamp();
+        $record = $this->createRedirect(['tx_redirectlifecycle_mode' => 2, 'endtime' => $expiry]);
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->update('sys_redirect', ['tx_redirectlifecycle_mode' => $mode], ['uid' => $record['uid']]);
+        $record = $this->record((int)$record['uid']);
+        $this->setTime('2026-01-11 UTC');
+        $this->get(EventDispatcherInterface::class)->dispatch(new RedirectWasHitEvent(
+            new ServerRequest('https://example.test/cleanup', 'GET'),
+            new HtmlResponse('', 307), $record, new Uri('https://target.test/new'),
+        ));
+        self::assertSame($record, $this->record((int)$record['uid']), 'Fixed and legacy expiries must never renew on a valid hit.');
+        // Fixed expiries use the current configuration rather than a stored managed date.
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['cleanupGracePeriod'] = '7';
+        $this->setTime('2026-01-18 UTC');
+        $tester = $this->command();
+        self::assertSame(0, $tester->execute(['--dry-run' => true]));
+        self::assertStringContainsString('/cleanup', $tester->getDisplay());
+        self::assertStringContainsString((string)(new \DateTimeImmutable('2026-01-18 UTC'))->getTimestamp(), $tester->getDisplay());
+        self::assertSame($record, $this->record((int)$record['uid']));
+        self::assertSame(0, $tester->execute([]));
+        $deleted = $this->record((int)$record['uid']);
+        self::assertSame(1, (int)$deleted['deleted']);
+        self::assertSame($record['endtime'], $deleted['endtime']);
+        self::assertSame($mode, (int)$deleted['tx_redirectlifecycle_mode']);
+        self::assertSame(0, (int)$deleted['tx_redirectlifecycle_delete_after']);
+        self::assertNull(BackendUtility::getRecord('sys_redirect', $record['uid']));
+        $restore = GeneralUtility::makeInstance(DataHandler::class);
+        $restore->start([], ['sys_redirect' => [$record['uid'] => ['undelete' => 1]]]);
+        $restore->process_cmdmap();
+        self::assertSame([], $restore->errorLog);
+        self::assertSame(0, (int)$this->record((int)$record['uid'])['deleted']);
+        self::assertSame($record['endtime'], $this->record((int)$record['uid'])['endtime']);
+        self::assertSame($mode, (int)$this->record((int)$record['uid'])['tx_redirectlifecycle_mode']);
+    }
+
+    public static function fixedExpiryModes(): array
+    {
+        return ['fixed' => [2], 'legacy unmanaged expiry' => [0]];
+    }
+
+    #[DataProvider('fixedCleanupBoundaries')]
+    public function testFixedCleanupUsesCurrentGraceAndInclusiveExpiry(int $mode, string $grace, string $time, int $deleted): void
+    {
+        $record = $this->createRedirect(['tx_redirectlifecycle_mode' => 2, 'endtime' => (new \DateTimeImmutable('2026-01-11 UTC'))->getTimestamp()]);
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->update('sys_redirect', [
+            'tx_redirectlifecycle_mode' => $mode, 'tx_redirectlifecycle_delete_after' => 2000000000,
+        ], ['uid' => $record['uid']]);
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['cleanupGracePeriod'] = $grace;
+        $this->setTime($time);
+        self::assertSame(0, $this->command()->execute([]));
+        $after = $this->record((int)$record['uid']);
+        self::assertSame($deleted, (int)$after['deleted']);
+        self::assertSame($record['endtime'], $after['endtime']);
+        self::assertSame(2000000000, (int)$after['tx_redirectlifecycle_delete_after']);
+    }
+
+    public static function fixedCleanupBoundaries(): array
+    {
+        $cases = [];
+        foreach ([2, 0] as $mode) {
+            foreach ([
+                'before grace' => ['7', '2026-01-17 23:59:59 UTC', 0],
+                'at grace' => ['7', '2026-01-18 UTC', 1],
+                'zero grace final valid second' => ['0', '2026-01-11 UTC', 0],
+                'zero grace first expired second' => ['0', '2026-01-11 00:00:01 UTC', 1],
+                'increased grace' => ['365', '2026-01-18 UTC', 0],
+                'oversized grace cannot be due' => [(string)PHP_INT_MAX, '2026-01-18 UTC', 0],
+            ] as $name => $values) {
+                $cases[$mode . ' ' . $name] = [$mode, ...$values];
+            }
+        }
+        return $cases;
+    }
+
     #[DataProvider('ineligibleRecords')]
     public function testIneligibleRecordsAreNeitherListedNorDeleted(array $fields): void
     {
@@ -127,20 +203,29 @@ final class CleanupTest extends FunctionalTestCase
             'protected' => [['protected' => 1]],
             'manually disabled' => [['disabled' => 1]],
             'unlimited' => [['endtime' => 0]],
-            'unmanaged' => [['tx_redirectlifecycle_mode' => 0]],
-            'fixed expiry' => [['tx_redirectlifecycle_mode' => 2]],
+            'unmanaged without expiry' => [['tx_redirectlifecycle_mode' => 0, 'endtime' => 0]],
+            'fixed without expiry' => [['tx_redirectlifecycle_mode' => 2, 'endtime' => 0]],
             'already deleted' => [['deleted' => 1]],
             'missing deletion time' => [['tx_redirectlifecycle_delete_after' => 0]],
             'invalid deletion before expiry' => [['tx_redirectlifecycle_delete_after' => 1]],
             'still valid' => [['endtime' => 2000000000, 'tx_redirectlifecycle_delete_after' => 2000000000]],
             'QR code' => [['redirect_type' => 'qrcode']],
             'short URL' => [['redirect_type' => 'short_url']],
+            'protected fixed' => [['tx_redirectlifecycle_mode' => 2, 'protected' => 1]],
+            'protected legacy' => [['tx_redirectlifecycle_mode' => 0, 'protected' => 1]],
+            'disabled fixed' => [['tx_redirectlifecycle_mode' => 2, 'disabled' => 1]],
+            'disabled legacy' => [['tx_redirectlifecycle_mode' => 0, 'disabled' => 1]],
+            'deleted fixed' => [['tx_redirectlifecycle_mode' => 2, 'deleted' => 1]],
+            'deleted legacy' => [['tx_redirectlifecycle_mode' => 0, 'deleted' => 1]],
+            'fixed QR code' => [['tx_redirectlifecycle_mode' => 2, 'redirect_type' => 'qrcode']],
+            'legacy short URL' => [['tx_redirectlifecycle_mode' => 0, 'redirect_type' => 'short_url']],
         ];
     }
 
     public function testNativeSchedulerTaskCanRunCleanupAndDryRun(): void
     {
         $record = $this->createRedirect();
+        $fixed = $this->createRedirect(['source_path' => '/fixed-scheduler', 'tx_redirectlifecycle_mode' => 2, 'endtime' => $record['endtime']]);
         $this->setTime('2026-04-11');
         $task = GeneralUtility::makeInstance(ExecuteSchedulableCommandTask::class);
         if (method_exists($task, 'setTaskType')) {
@@ -153,6 +238,7 @@ final class CleanupTest extends FunctionalTestCase
         }
         self::assertTrue($task->execute());
         self::assertSame($record, $this->record((int)$record['uid']));
+        self::assertSame($fixed, $this->record((int)$fixed['uid']));
         if (method_exists($task, 'setTaskType')) {
             $task->setTaskParameters([]);
         } else {
@@ -160,6 +246,7 @@ final class CleanupTest extends FunctionalTestCase
         }
         self::assertTrue($task->execute());
         self::assertSame(1, (int)$this->record((int)$record['uid'])['deleted']);
+        self::assertSame(1, (int)$this->record((int)$fixed['uid'])['deleted']);
     }
 
     public function testCleanupRemovesDeletedRedirectFromPopulatedHostCacheAndKeepsSibling(): void
@@ -179,12 +266,13 @@ final class CleanupTest extends FunctionalTestCase
     }
 
     #[DataProvider('changesAfterSelection')]
-    public function testCleanupRechecksChangesAfterCandidateSelection(array $fields): void
+    public function testCleanupRechecksChangesAfterCandidateSelection(array $fields, int $mode = 1): void
     {
         if (isset($fields['redirect_type']) && !isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
             self::markTestSkipped('Redirect types were introduced in TYPO3 14.');
         }
         $record = $this->createRedirect();
+        $this->getConnectionPool()->getConnectionForTable('sys_redirect')->update('sys_redirect', ['tx_redirectlifecycle_mode' => $mode], ['uid' => $record['uid']]);
         $this->setTime('2026-04-11');
         $change = function () use ($record, $fields): void {
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
@@ -222,6 +310,9 @@ final class CleanupTest extends FunctionalTestCase
             'fixed expiry' => [['tx_redirectlifecycle_mode' => 2, 'endtime' => 2000000000]],
             'QR code' => [['redirect_type' => 'qrcode']],
             'short URL' => [['redirect_type' => 'short_url']],
+            'fixed protection' => [['protected' => 1], 2],
+            'legacy disabling' => [['disabled' => 1], 0],
+            'fixed expiry moved into future' => [['endtime' => 2000000000], 2],
         ];
     }
 

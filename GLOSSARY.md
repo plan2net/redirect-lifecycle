@@ -17,16 +17,16 @@ A redirect request actually executed by TYPO3 while the redirect is valid, inclu
 A redirect excluded from automatic expiry management and automatic deletion. Protection does not cancel a fixed expiry time or prevent manual deletion.
 
 **Fixed expiry time**:
-An explicitly chosen expiry time that takes precedence over automatic lifecycle management. A redirect with a fixed expiry time is neither automatically renewed nor automatically deleted.
+An explicitly chosen expiry time that takes precedence over automatic lifetime renewal. A redirect with a fixed expiry time is not automatically renewed, but may be soft-deleted after expiry and the cleanup grace period unless protected or manually disabled.
 
 **Manually disabled redirect**:
 A redirect explicitly switched off and excluded from automatic deletion. Expiry alone does not make a redirect manually disabled.
 
 **Cleanup grace period**:
-The waiting period after a managed redirect's expiry time before automatic deletion is allowed.
+The waiting period after a redirect's expiry time before automatic soft deletion is allowed.
 
 **Deletion time**:
-The stored earliest time at which a managed redirect may be automatically deleted, provided it remains expired, unprotected, and not manually disabled.
+The earliest time at which a redirect may be automatically soft-deleted, provided it remains expired, unprotected, and not manually disabled. Managed redirects retain a stored deletion time; fixed expiries use their expiry plus the current cleanup grace period.
 
 **Existing redirect adoption**:
 An explicitly initiated enrollment of eligible existing redirects in automatic lifecycle management. Adoption starts a full initial lifetime and does not renew redirects that have already been adopted.
