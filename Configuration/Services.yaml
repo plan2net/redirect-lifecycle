@@ -45,3 +45,7 @@ services:
       - name: event.listener
         identifier: redirect-lifecycle-renewal
         method: onHit
+  Plan2net\RedirectLifecycle\EventListener\RedirectListEventListener:
+    tags:
+      - name: event.listener
+        identifier: redirect-lifecycle-list

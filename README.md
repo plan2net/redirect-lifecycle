@@ -61,6 +61,10 @@ lifetime action uses the new values.
 | **Fixed expiry time** | Lets you edit the native Stop date. Automatic renewal and lifecycle cleanup stop. |
 | **No automatic management** | Ends management and clears managed dates. An existing fixed expiry remains until explicitly removed. |
 
+On TYPO3 14, the redirect list also shows the lifetime management mode beside
+each source path. Protected redirects retain their management mode; the Core's
+Protected column shows that management is paused.
+
 New normal redirects without a fixed expiry use automatic management, including
 redirects created after a page URL changes. On TYPO3 14, QR codes and short URLs
 are excluded.
