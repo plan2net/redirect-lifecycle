@@ -146,6 +146,7 @@ final class ActionTest extends FunctionalTestCase
             'protected' => [['endtime' => 2000000000, 'protected' => 1]],
             'disabled' => [['endtime' => 2000000000, 'disabled' => 1]],
             'not yet active' => [['endtime' => 2000000000, 'starttime' => 1900000000]],
+            'protected disabled and not yet active' => [['endtime' => 2000000000, 'protected' => 1, 'disabled' => 1, 'starttime' => 1900000000]],
         ];
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Plan2net\RedirectLifecycle\Tests\Functional;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use Plan2net\RedirectLifecycle\Service\RedirectLifecycle;
 use Plan2net\RedirectLifecycle\Tests\Functional\Support\TestClock;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -76,6 +77,7 @@ final class DisabledRetentionTest extends FunctionalTestCase
         $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['redirect_lifecycle']['disabledRetentionDays'] = '7';
         $this->setTime('2026-01-03 UTC');
         $tester = $this->command('adopt');
+        self::assertSame('startDisabledRetention', $this->get(RedirectLifecycle::class)->actionReason($before, true));
         self::assertSame(0, $tester->execute(['uids' => [(string)$before['uid']]]));
         self::assertSame($before, $this->record((int)$before['uid']));
         self::assertStringContainsString('Start disabled retention', $tester->getDisplay());
@@ -86,6 +88,7 @@ final class DisabledRetentionTest extends FunctionalTestCase
         self::assertSame($mode, (int)$after['tx_redirectlifecycle_mode']);
         self::assertSame($before['endtime'], $after['endtime']);
         self::assertSame(1, (int)$after['disabled']);
+        self::assertSame('disabledRetentionActive', $this->get(RedirectLifecycle::class)->actionReason($after, true));
         $this->setTime('2026-01-04 UTC');
         self::assertSame(0, $tester->execute(['uids' => [(string)$before['uid']], '--execute' => true]));
         self::assertSame($after, $this->record((int)$before['uid']));

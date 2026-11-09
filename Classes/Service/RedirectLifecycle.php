@@ -227,7 +227,7 @@ final class RedirectLifecycle
     /** Null means applied; otherwise returns the untranslated skip reason. */
     public function adopt(int $uid): ?string
     {
-        return $this->restart($uid, true);
+        return $this->applyAction($uid, true);
     }
 
     /** @return array{endtime: int, shortens: bool, state: string} */
@@ -249,15 +249,15 @@ final class RedirectLifecycle
     /** Null means applied; otherwise returns the untranslated skip reason, including a changed preview. */
     public function renew(int $uid, ?string $expectedState = null): ?string
     {
-        return $this->restart($uid, false, $expectedState);
+        return $this->applyAction($uid, false, $expectedState);
     }
 
-    private function restart(int $uid, bool $adopt, ?string $expectedState = null): ?string
+    private function applyAction(int $uid, bool $adopt, ?string $expectedState = null): ?string
     {
         return $this->write($uid, function (array $record) use ($uid, $adopt, $expectedState): ?string {
-            $reason = $this->actionReason($record, $adopt);
-            if ($reason !== 'eligible' && (!$adopt || !in_array($reason, ['markFixed', 'startDisabledRetention'], true))) {
-                return $reason;
+            $decision = $this->actionDecision($record, $adopt);
+            if (!isset($decision['mode'])) {
+                return $decision['reason'];
             }
             if ($expectedState !== null && !hash_equals($this->previewRenewal($record)['state'], $expectedState)) {
                 return 'changed';
@@ -268,18 +268,11 @@ final class RedirectLifecycle
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
             // Native non-admin validation requires source and target, even when unchanged.
             $dataHandler->start(['sys_redirect' => [$uid => [
-                'tx_redirectlifecycle_mode' => match ($reason) {
-                    'markFixed' => self::MODE_FIXED,
-                    'startDisabledRetention' => (int)$record['tx_redirectlifecycle_mode'],
-                    default => self::MODE_MANAGED,
-                },
+                'tx_redirectlifecycle_mode' => $decision['mode'],
                 'source_host' => $record['source_host'], 'target' => $record['target'],
             ]]], []);
-            if (!$adopt && $dataHandler->getCorrelationId() !== null) {
-                $dataHandler->setCorrelationId($dataHandler->getCorrelationId()->withAspects(self::RENEWAL_ASPECT));
-            }
-            if ($adopt && $dataHandler->getCorrelationId() !== null) {
-                $dataHandler->setCorrelationId($dataHandler->getCorrelationId()->withAspects(self::DISABLED_RETENTION_ASPECT));
+            if ($dataHandler->getCorrelationId() !== null) {
+                $dataHandler->setCorrelationId($dataHandler->getCorrelationId()->withAspects($decision['aspect']));
             }
             $dataHandler->process_datamap();
             if ($dataHandler->errorLog !== []) {
@@ -417,42 +410,51 @@ final class RedirectLifecycle
 
     public function actionReason(array $record, bool $adopt): string
     {
+        return $this->actionDecision($record, $adopt)['reason'];
+    }
+
+    /** @return array{reason: string, mode?: int, aspect?: string} A mode makes the decision executable. */
+    private function actionDecision(array $record, bool $adopt): array
+    {
         if (!isset($record['tx_redirectlifecycle_mode'])) {
-            return 'missing';
+            return ['reason' => 'missing'];
         }
         if ($record['deleted']) {
-            return 'deleted';
+            return ['reason' => 'deleted'];
         }
         if (($record['redirect_type'] ?? 'default') !== 'default') {
-            return 'excludedType';
+            return ['reason' => 'excludedType'];
         }
+        $aspect = $adopt ? self::DISABLED_RETENTION_ASPECT : self::RENEWAL_ASPECT;
         if ($adopt) {
             if ((int)$record['tx_redirectlifecycle_mode'] === self::MODE_UNMANAGED && (int)$record['endtime'] > 0) {
-                return 'markFixed';
+                return ['reason' => 'markFixed', 'mode' => self::MODE_FIXED, 'aspect' => $aspect];
             }
             if (!empty($record['disabled']) && empty($record['protected']) && $this->disabledRetentionDays() > 0) {
-                return !empty($record['tx_redirectlifecycle_disabled_retention']) && (int)$record['tx_redirectlifecycle_delete_after'] > 0
-                    ? 'disabledRetentionActive' : 'startDisabledRetention';
+                if (!empty($record['tx_redirectlifecycle_disabled_retention']) && (int)$record['tx_redirectlifecycle_delete_after'] > 0) {
+                    return ['reason' => 'disabledRetentionActive'];
+                }
+                return ['reason' => 'startDisabledRetention', 'mode' => (int)$record['tx_redirectlifecycle_mode'], 'aspect' => $aspect];
             }
             if ((int)$record['tx_redirectlifecycle_mode'] === self::MODE_MANAGED) {
-                return 'alreadyManaged';
+                return ['reason' => 'alreadyManaged'];
             }
             if ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_UNMANAGED || (int)$record['endtime'] !== 0) {
-                return 'fixed';
+                return ['reason' => 'fixed'];
             }
             if ($record['protected']) {
-                return 'protected';
+                return ['reason' => 'protected'];
             }
             if ($record['disabled']) {
-                return 'disabled';
+                return ['reason' => 'disabled'];
             }
             if ((int)$record['starttime'] > $this->context->getAspect('date')->getDateTime()->getTimestamp()) {
-                return 'notStarted';
+                return ['reason' => 'notStarted'];
             }
         } elseif ((int)$record['tx_redirectlifecycle_mode'] !== self::MODE_MANAGED) {
-            return (int)$record['tx_redirectlifecycle_mode'] === self::MODE_FIXED || (int)$record['endtime'] > 0 ? 'fixed' : 'unmanaged';
+            return ['reason' => (int)$record['tx_redirectlifecycle_mode'] === self::MODE_FIXED || (int)$record['endtime'] > 0 ? 'fixed' : 'unmanaged'];
         }
-        return 'eligible';
+        return ['reason' => 'eligible', 'mode' => self::MODE_MANAGED, 'aspect' => $aspect];
     }
 
     public function extendOnHit(int $uid): ?array
