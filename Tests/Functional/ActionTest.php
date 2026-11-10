@@ -161,7 +161,7 @@ final class ActionTest extends FunctionalTestCase
         $tester = $this->command('adopt');
         self::assertSame(0, $tester->execute(['uids' => ['100']]));
         self::assertStringContainsString($reason, $tester->getDisplay());
-        self::assertSame(0, $tester->execute(['uids' => ['100'], '--execute' => true]));
+        $this->executeReadOnly($tester);
         self::assertSame($before, $this->record(100));
     }
 
@@ -179,27 +179,6 @@ final class ActionTest extends FunctionalTestCase
             'QR code with expiry' => [['redirect_type' => 'qrcode', 'endtime' => 2000000000], 'Excluded redirect type'],
             'short URL' => [['redirect_type' => 'short_url'], 'Excluded redirect type'],
         ];
-    }
-
-    #[DataProvider('adoptionExclusions')]
-    public function testSkippedAdoptionWorksWithoutDatabaseWriteAccess(array $fields, string $reason): void
-    {
-        if (isset($fields['redirect_type']) && !isset($GLOBALS['TCA']['sys_redirect']['columns']['redirect_type'])) {
-            self::markTestSkipped('Redirect types were introduced in TYPO3 14.');
-        }
-        $connection = $this->getConnectionPool()->getConnectionForTable('sys_redirect');
-        $connection->update('sys_redirect', $fields, ['uid' => 100]);
-        $before = $this->record(100);
-        $tester = $this->command('adopt');
-        $connection->executeStatement('PRAGMA query_only = ON');
-        try {
-            self::assertSame(0, $tester->execute(['uids' => ['100'], '--execute' => true]));
-            self::assertSame(0, $connection->getTransactionNestingLevel());
-        } finally {
-            $connection->executeStatement('PRAGMA query_only = OFF');
-        }
-        self::assertStringContainsString($reason, $tester->getDisplay());
-        self::assertSame($before, $this->record(100));
     }
 
     public function testAdoptionStillRechecksEligibilityAfterAcquiringTheLock(): void
@@ -289,9 +268,22 @@ final class ActionTest extends FunctionalTestCase
         }
         $before = $this->record(100);
         $tester = $this->command('renew');
-        self::assertSame(0, $tester->execute(['uids' => ['100'], '--execute' => true]));
+        $this->executeReadOnly($tester);
         self::assertStringContainsString($reason, $tester->getDisplay());
         self::assertSame($before, $this->record(100));
+    }
+
+    /** Skipped records must not open a transaction or write, so execution succeeds without write access. */
+    private function executeReadOnly(CommandTester $tester): void
+    {
+        $connection = $this->getConnectionPool()->getConnectionForTable('sys_redirect');
+        $connection->executeStatement('PRAGMA query_only = ON');
+        try {
+            self::assertSame(0, $tester->execute(['uids' => ['100'], '--execute' => true]));
+            self::assertSame(0, $connection->getTransactionNestingLevel());
+        } finally {
+            $connection->executeStatement('PRAGMA query_only = OFF');
+        }
     }
 
     public static function renewalExclusions(): array

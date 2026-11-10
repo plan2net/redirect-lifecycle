@@ -254,14 +254,10 @@ final class RedirectLifecycle
 
     private function applyAction(int $uid, bool $adopt, ?string $expectedState = null): ?string
     {
-        $record = [];
-        if ($adopt) {
-            $record = BackendUtility::getRecord('sys_redirect', $uid, '*', '', false) ?? [];
-            $decision = $this->actionDecision($record, true);
-            if (!isset($decision['mode'])) {
-                return $decision['reason'];
-            }
-        }
+        $skipReason = function (array $record) use ($adopt): ?string {
+            $decision = $this->actionDecision($record, $adopt);
+            return isset($decision['mode']) ? null : $decision['reason'];
+        };
         return $this->write($uid, function (array $record) use ($uid, $adopt, $expectedState): ?string {
             $decision = $this->actionDecision($record, $adopt);
             if (!isset($decision['mode'])) {
@@ -287,13 +283,20 @@ final class RedirectLifecycle
                 throw new \RuntimeException(implode("\n", $dataHandler->errorLog), self::LIFETIME_RESTART_FAILED);
             }
             return null;
-        }, $record);
+        }, precheck: $skipReason);
     }
 
-    private function write(int $uid, \Closure $operation, array $record = []): ?string
+    /**
+     * Runs $operation on the locked record. A $precheck reason from the unlocked read skips without a
+     * transaction; skipping is only safe because $operation re-checks everything under the lock.
+     */
+    private function write(int $uid, \Closure $operation, array $record = [], ?\Closure $precheck = null): ?string
     {
         $connection = $this->connectionPool->getConnectionForTable('sys_redirect');
         $record = $record ?: BackendUtility::getRecord('sys_redirect', $uid, '*', '', false) ?? [];
+        if ($precheck !== null && ($reason = $precheck($record)) !== null) {
+            return $reason;
+        }
         $sourceHost = $record['source_host'] ?? '';
         $connection->beginTransaction();
         $this->writesInProgress[$uid] = ($this->writesInProgress[$uid] ?? 0) + 1;
